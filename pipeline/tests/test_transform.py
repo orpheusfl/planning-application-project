@@ -7,60 +7,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from pipeline.utilities.transform import Application
-
-
-# ============================================================================
-# FIXTURES
-# ============================================================================
-
-
-@pytest.fixture
-def sample_raw_address() -> str:
-    """Sample valid UK address with postcode."""
-    return "Iceland Wharf, Iceland Road, London E3 2JP"
-
-
-@pytest.fixture
-def sample_validation_date() -> str:
-    """Sample validation date in expected format."""
-    return "Mon 09 Jun 2025"
-
-
-@pytest.fixture
-def sample_pdfs() -> list[dict]:
-    """Sample list of PDF metadata."""
-    return [
-        {
-            "pdf_url": "https://development.towerhamlets.gov.uk/online-applications/files/0D7EF369DE41A10749E37876158B9790/pdf/PA_25_00973_A1-ADDENDUM-2294022.pdf",
-            "document_type": "Planning Statement"
-        },
-        {
-            "pdf_url": "https://development.towerhamlets.gov.uk/online-applications/files/6A4BC53103A5828430C02EA01F8277B2/pdf/PA_25_00973_A1-ADDENDUM___PART_1-2292216.pdf",
-            "document_type": "Design & Access Statement"
-        }
-    ]
-
-
-@pytest.fixture
-def sample_application(sample_raw_address, sample_validation_date,
-                       sample_pdfs) -> Application:
-    """Sample Application instance with raw data."""
-    return Application(
-        application_number="PA/25/00973/A1",
-        application_type="Full Planning Permission",
-        description="Full planning application for the redevelopment of the site to provide non-residential floorspace/yard-space together with associated refuse stores, plant, secure cycle stores and car parking, and residential dwellings including affordable housing, together with the provision of landscaped public open space, refuse stores, plant, secure cycle stores and car parking for people with disabilities.",
-        address=sample_raw_address,
-        validation_date=sample_validation_date,
-        status="Registered",
-        pdfs=sample_pdfs
-    )
-
-
-@pytest.fixture
-def mock_temp_dir(tmp_path) -> Path:
-    """Mock temporary directory for PDF storage."""
-    return tmp_path
+from ..utilities.transform import Application
 
 
 # ============================================================================
@@ -183,21 +130,29 @@ class TestExtractPdfFromUrl:
 class TestExtractTextFromPdf:
     """Tests for extracting text content from PDF files."""
 
-    def test_happy_path_valid_pdf(self, mock_temp_dir):
+    def test_happy_path_valid_pdf(self, sample_application, fixture_pdf_planning_statement):
         """Extract text content from valid PDF file."""
-        pass
+        result = sample_application.extract_text_from_pdf(
+            fixture_pdf_planning_statement)
+        assert isinstance(result, str)
+        assert len(result) > 0
 
-    def test_pdf_with_no_text(self, mock_temp_dir):
+    def test_pdf_with_no_text(self, sample_application, fixture_pdf_design_statement):
         """Handle PDF with no extractable text."""
         pass
 
-    def test_corrupted_pdf(self, mock_temp_dir):
+    def test_corrupted_pdf(self, sample_application, tmp_path):
         """Raise exception for corrupted PDF file."""
-        pass
+        corrupted_pdf = tmp_path / "corrupted.pdf"
+        corrupted_pdf.write_bytes(b"Not a real PDF")
+        with pytest.raises((ValueError, Exception)):
+            sample_application.extract_text_from_pdf(corrupted_pdf)
 
-    def test_file_not_found(self):
+    def test_file_not_found(self, sample_application):
         """Raise exception when PDF file does not exist."""
-        pass
+        nonexistent = Path("/nonexistent/file.pdf")
+        with pytest.raises(FileNotFoundError):
+            sample_application.extract_text_from_pdf(nonexistent)
 
 
 class TestCleanPdfText:

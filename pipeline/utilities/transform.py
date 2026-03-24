@@ -1,6 +1,6 @@
 """Utilities for transforming planning application data.
     This module will take in:
-    
+
     {application_number:
     address:
     validation_date:
@@ -8,7 +8,7 @@
     status:
     application_type:
     pdfs: list[{pdf_url: str, document_type: str}]}
-    
+
     And will output a dictionary ready to be loaded into RDS with the following structure:
     {
     application_number: str
@@ -29,6 +29,9 @@ import shutil
 import tempfile
 from datetime import datetime
 from pathlib import Path
+import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 
 class Application:
@@ -121,7 +124,42 @@ class Application:
         Returns:
             Path to the downloaded PDF file in temp directory
         """
-        pass
+        # Create a session to handle cookies and retries
+        session = requests.Session()
+
+        # Configure retry strategy for resilience
+        retry_strategy = Retry(
+            total=3,
+            backoff_factor=1,
+            status_forcelist=[429, 500, 502, 503, 504],
+        )
+        adapter = HTTPAdapter(max_retries=retry_strategy)
+        session.mount("http://", adapter)
+        session.mount("https://", adapter)
+
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+            'Accept': 'application/pdf,text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
+            'Accept-Encoding': 'gzip, deflate',
+            'Referer': 'https://development.towerhamlets.gov.uk/',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1'
+            'Cookie'
+        }
+
+        # First request to establish session and get cookie
+        session.get('https://development.towerhamlets.gov.uk/',
+                    verify=False, headers=headers)
+
+        # Now download the PDF with the session cookie
+        response = session.get(
+            url, verify=False, headers=headers, allow_redirects=True, timeout=30)
+        response.raise_for_status()
+
+        pdf_path = self._temp_dir / Path(url).name
+        pdf_path.write_bytes(response.content)
+        return pdf_path
 
     def store_pdf_data(self, pdfs: list[dict]) -> list[dict]:
         """Extract PDF files from URLs to temp storage with document type metadata.
@@ -130,9 +168,16 @@ class Application:
             pdfs: List of dicts with 'pdf_url' and 'document_type' keys
 
         Returns:
-            List of dicts with 'document_type' and 'pdf_data' (bytes) keys
+            List of dicts with 'document_type' and 'pdf_data' (path) keys
         """
-        pass
+        stored_pdfs = []
+        for pdf in pdfs:
+            pdf_path = self.extract_pdf_from_url(pdf['pdf_url'])
+            stored_pdfs.append({
+                'document_type': pdf['document_type'],
+                'pdf_data': pdf_path
+            })
+        return stored_pdfs
 
     def extract_text_from_pdf(self, pdf_path: Path) -> str:
         """Extract main body text from PDF file.
@@ -247,3 +292,29 @@ class Application:
             'public_interest_score': self.public_interest_score,
             'pdfs': self.pdfs
         }
+
+
+if __name__ == "__main__":
+    sample_application = Application(
+        application_number="PA/25/00973/A1",
+        application_type="Full Planning Permission",
+        description="Full planning application for the redevelopment of the site to provide non-residential floorspace/yard-space together with associated refuse stores, plant, secure cycle stores and car parking, and residential dwellings including affordable housing, together with the provision of landscaped public open space, refuse stores, plant, secure cycle stores and car parking for people with disabilities.",
+        address="Iceland Wharf, Iceland Road, London E3 2JP",
+        validation_date="Mon 09 Jun 2025",
+        status="Registered",
+        pdfs=[
+            {"pdf_url": "https://development.towerhamlets.gov.uk/online-applications/files/0D7EF369DE41A10749E37876158B9790/pdf/PA_25_00973_A1-ADDENDUM-2294022.pdf",
+             "document_type": "Planning Statement"},
+            {"pdf_url": "https://development.towerhamlets.gov.uk/online-applications/files/6A4BC53103A5828430C02EA01F8277B2/pdf/PA_25_00973_A1-ADDENDUM___PART_1-2292216.pdf",
+             "document_type": "Design & Access Statement"}
+        ]
+    )
+
+    try:
+        path_ = sample_application.extract_pdf_from_url(
+            "https://development.towerhamlets.gov.uk/online-applications/pagedSearchResults.do?action=page&searchCriteria.page=1")
+        print(f"PDF downloaded to: {path_}")
+    except requests.exceptions.RequestException as e:
+        print(f"Error downloading PDF: {e}")
+    except Exception as e:
+        print(f"Unexpected error: {e}")
