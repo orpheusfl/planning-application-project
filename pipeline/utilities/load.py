@@ -3,20 +3,22 @@
 # ------------------------------------------------------------
 # Imports
 # ------------------------------------------------------------
+
 import logging
 import os
 import psycopg2
 import boto3
-from dotenv import load_dotenv
 
 # ------------------------------------------------------------
 # Logging configuration
 # ------------------------------------------------------------
+
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s') 
 
 # ------------------------------------------------------------
 # Get rds connection
 # ------------------------------------------------------------
+
 def get_rds_connection(RDS_HOST:str, RDS_PORT:int, RDS_USER:str, RDS_PASSWORD:str, RDS_DB_NAME:str):
     """ Establishes a connection to the RDS database. """
     try:
@@ -36,6 +38,7 @@ def get_rds_connection(RDS_HOST:str, RDS_PORT:int, RDS_USER:str, RDS_PASSWORD:st
 # ------------------------------------------------------------
 # Get s3 client
 # ------------------------------------------------------------
+
 def get_s3_client(AWS_ACCESS_KEY_ID:str, AWS_SECRET_ACCESS_KEY:str, AWS_REGION:str):
     """ Creates an S3 client using the provided AWS credentials. """
     try:
@@ -156,6 +159,7 @@ def load_application_to_rds(conn, table_name:str, application_data: dict, counci
 # ------------------------------------------------------------
 # Load pdf to s3
 # ------------------------------------------------------------
+
 def load_pdf_to_s3(s3_client, bucket_name:str, file_path:str, s3_key:str):
     """ Uploads a PDF file to the specified S3 bucket. 
     Takes the local file path and the desired S3 key as input. """
@@ -214,7 +218,7 @@ def load_document_metadata_to_rds(conn, table_name:str, application_id:int, s3_o
                     application_id, 
                     document_type_id, 
                     s3_key
-                ) VALUES (%s, %s, %s, %s)
+                ) VALUES (%s, %s, %s)
             """
             cursor.execute(insert_query, (
                 application_id,
