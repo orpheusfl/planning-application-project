@@ -2,6 +2,7 @@
 
 from datetime import datetime
 from pathlib import Path
+import unittest
 from unittest.mock import Mock, patch
 
 import pytest
@@ -17,13 +18,13 @@ from pipeline.utilities.transform import Application
 @pytest.fixture
 def sample_raw_address() -> str:
     """Sample valid UK address with postcode."""
-    return "36A Grove Road, London, E3 5AX"
+    return "Iceland Wharf, Iceland Road, London E3 2JP"
 
 
 @pytest.fixture
 def sample_validation_date() -> str:
     """Sample validation date in expected format."""
-    return "Fri 20 Mar 2026"
+    return "Mon 09 Jun 2025"
 
 
 @pytest.fixture
@@ -31,12 +32,12 @@ def sample_pdfs() -> list[dict]:
     """Sample list of PDF metadata."""
     return [
         {
-            "pdf_url": "http://example.com/planning-statement.pdf",
+            "pdf_url": "https://development.towerhamlets.gov.uk/online-applications/files/0D7EF369DE41A10749E37876158B9790/pdf/PA_25_00973_A1-ADDENDUM-2294022.pdf",
             "document_type": "Planning Statement"
         },
         {
-            "pdf_url": "http://example.com/site-plan.pdf",
-            "document_type": "Site Plan"
+            "pdf_url": "https://development.towerhamlets.gov.uk/online-applications/files/6A4BC53103A5828430C02EA01F8277B2/pdf/PA_25_00973_A1-ADDENDUM___PART_1-2292216.pdf",
+            "document_type": "Design & Access Statement"
         }
     ]
 
@@ -46,12 +47,12 @@ def sample_application(sample_raw_address, sample_validation_date,
                        sample_pdfs) -> Application:
     """Sample Application instance with raw data."""
     return Application(
-        application_number="APP/2026/00123",
+        application_number="PA/25/00973/A1",
         application_type="Full Planning Permission",
-        description="Demolition of existing structure and erection of new residential building",
+        description="Full planning application for the redevelopment of the site to provide non-residential floorspace/yard-space together with associated refuse stores, plant, secure cycle stores and car parking, and residential dwellings including affordable housing, together with the provision of landscaped public open space, refuse stores, plant, secure cycle stores and car parking for people with disabilities.",
         address=sample_raw_address,
         validation_date=sample_validation_date,
-        status="Pending",
+        status="Registered",
         pdfs=sample_pdfs
     )
 
@@ -70,41 +71,92 @@ def mock_temp_dir(tmp_path) -> Path:
 class TestGetPostcodeAndAddressFromAddress:
     """Tests for extracting postcode and address components."""
 
-    def test_happy_path_valid_address(self, sample_raw_address):
+    def test_happy_path_valid_address(self, sample_raw_address, sample_application):
         """Extract postcode and address from valid UK address."""
-        pass
-
-    def test_postcode_normalization(self):
-        """Postcode is stripped of spaces and normalized."""
-        pass
+        result = sample_application.get_postcode_and_address_from_address(
+            sample_raw_address)
+        assert result['address'] == "Iceland Wharf, Iceland Road, London"
+        assert result['postcode'] == "E32JP"
+        assert isinstance(result['postcode'], str)
 
     def test_missing_postcode(self):
         """Handle address without postcode."""
-        pass
+        example_application = Application(
+            application_number="PA/25/00000",
+            application_type="Full Planning Permission",
+            description="Example application with missing postcode",
+            address="Iceland Wharf, Iceland Road, London",
+            validation_date="Mon 09 Jun 2025",
+            status="Registered",
+            pdfs=[]
+        )
+
+        with pytest.raises(ValueError, match="Postcode not found in address"):
+            example_application.get_postcode_and_address_from_address(
+                "Iceland Wharf, Iceland Road, London")
 
     def test_empty_address(self):
         """Handle empty address string."""
-        pass
+        example_application = Application(
+            application_number="PA/25/00000",
+            application_type="Full Planning Permission",
+            description="Example application with empty address",
+            address="",
+            validation_date="Mon 09 Jun 2025",
+            status="Registered",
+            pdfs=[]
+        )
+
+        with pytest.raises(ValueError, match="Address is empty"):
+            example_application.get_postcode_and_address_from_address("")
 
 
 class TestParseValidationDateToDatetime:
     """Tests for parsing validation date strings to datetime objects."""
 
-    def test_happy_path_valid_date_format(self, sample_validation_date):
+    def test_happy_path_valid_date_format(self, sample_application):
         """Parse valid date string to datetime object."""
-        pass
+        result = sample_application.parse_validation_date_to_datetime(
+            "Mon 09 Jun 2025")
+        assert isinstance(result, datetime)
+        assert result.year == 2025
+        assert result.month == 6
+        assert result.day == 9
 
-    def test_different_date_formats(self):
+    @pytest.mark.parametrize("date_str, expected_year, expected_month, expected_day", [
+        ("2025-06-09", 2025, 6, 9),
+        ("09/06/2025", 2025, 6, 9),
+        ("June 9, 2025", 2025, 6, 9),
+        ("9 June 2025", 2025, 6, 9),
+        ("2025.06.09", 2025, 6, 9),
+        ("Jun 9 2025", 2025, 6, 9)
+    ])
+    def test_different_date_formats(self, sample_application, date_str, expected_year, expected_month, expected_day):
         """Parse dates in various acceptable formats."""
-        pass
 
-    def test_invalid_date_format(self):
+        result_iso = sample_application.parse_validation_date_to_datetime(
+            date_str)
+
+        assert result_iso.year == expected_year
+        assert result_iso.month == expected_month
+        assert result_iso.day == expected_day
+
+    @pytest.mark.parametrize("invalid_date_str", [
+        "Invalid Date",
+        datetime.now(),
+        "2025/13/01",  # Invalid month
+        "2025-02-30",  # Non-existent date
+        "2025-06-31",  # June has only 30 days
+        "Tue 09 Jun 2025",  # Invalid weekday
+        "Mon 9 Jun 1500",  # Year out of expected range
+        "Mon 09 Jun 20250",  # Year with too many digits
+        "Mon 09 Jun 20",  # Year with too few digits
+    ])
+    def test_invalid_date_format(self, sample_application, invalid_date_str):
         """Raise exception for invalid date format."""
-        pass
-
-    def test_invalid_date_values(self):
-        """Raise exception for non-existent dates."""
-        pass
+        with pytest.raises(ValueError, match="Invalid date format"):
+            sample_application.parse_validation_date_to_datetime(
+                invalid_date_str)
 
 
 class TestExtractPdfFromUrl:
@@ -112,23 +164,20 @@ class TestExtractPdfFromUrl:
 
     def test_happy_path_valid_url(self, mock_temp_dir):
         """Download PDF from valid URL and save to temp directory."""
-        pass
+        assert mock_temp_dir.exists()
 
-    def test_invalid_url(self):
+    def test_invalid_url(self, sample_application):
         """Raise exception for malformed URL."""
-        pass
+        with pytest.raises(ValueError, match="Invalid URL"):
+            sample_application.extract_pdf_from_url("htp://invalid-url")
 
-    def test_http_404_error(self):
+    @unittest.mock.patch('pipeline.utilities.transform.requests.get')
+    def test_http_404_error(self, mock_get, sample_application):
         """Raise exception when PDF URL returns 404."""
-        pass
-
-    def test_network_timeout(self):
-        """Raise exception on network timeout."""
-        pass
-
-    def test_file_saved_to_temp_directory(self, mock_temp_dir):
-        """Verify PDF is saved to temporary directory."""
-        pass
+        mock_get.return_value.status_code = 404
+        with pytest.raises(ValueError, match="Failed to download PDF"):
+            sample_application.extract_pdf_from_url(
+                "https://example.com/nonexistent.pdf")
 
 
 class TestExtractTextFromPdf:
