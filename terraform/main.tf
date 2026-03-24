@@ -7,7 +7,7 @@ terraform {
   }
 
   backend "s3" {
-    bucket  = "c22-planning-bootstrap-s3"
+    bucket  = "c22-planning-tf-state-12345"
     key     = "global/s3/terraform.tfstate"
     region  = "eu-west-2"
     encrypt = true

@@ -35,15 +35,15 @@ resource "aws_security_group" "pipeline-rds-sg" {
 resource "aws_db_instance" "pipeline-planning-db" {
   identifier             = "c22-planning-pipeline-db"
   engine                 = "postgres"
-  engine_version         = "15.4"
+  engine_version         = "16"
   instance_class         = "db.t3.micro"
   allocated_storage      = 20
   storage_type           = "gp3"
   db_name                = "planningdata"
   
   # Fetch credentials using the newly named terraform resources
-  username               = jsondecode(aws_secretsmanager_secret_version.pipeline-db-creds-version.secret_string)["username"]
-  password               = jsondecode(aws_secretsmanager_secret_version.pipeline-db-creds-version.secret_string)["password"]
+  username               = "c22_planners" # Change later
+  password               = "password123!" # Change later and store in Secrets Manager
   
   db_subnet_group_name   = aws_db_subnet_group.pipeline-rds-subnet-group.name
   vpc_security_group_ids = [aws_security_group.pipeline-rds-sg.id]
