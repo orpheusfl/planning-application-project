@@ -81,5 +81,9 @@ venv/
 .pytest_cache
 
 .terraform
+.terraform/
+.terraform.lock.hcl
+terraform_bootstrap/.terraform/providers/registry.terraform.io/hashicorp/aws/5.100.0/darwin_arm64/terraform-provider-aws_v5.100.0_x5
+
 
 .venv
