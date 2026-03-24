@@ -114,6 +114,7 @@ def load_application_to_rds(conn, table_name:str, application_data: dict, counci
         - lat
         - long
         - ai_summary
+        - source_url
         - public_interest_score
     """
     try:
@@ -130,8 +131,9 @@ def load_application_to_rds(conn, table_name:str, application_data: dict, counci
                     public_interest_score, 
                     council_id, 
                     status_type_id, 
-                    application_type_id
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    application_type_id,
+                    source_url
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING application_id
             """
             cursor.execute(insert_query, (
@@ -143,6 +145,7 @@ def load_application_to_rds(conn, table_name:str, application_data: dict, counci
                 application_data['long'],
                 application_data['ai_summary'],
                 application_data['public_interest_score'],
+                application_data['source_url'],
                 council_id,
                 status_type_id,
                 application_type_id
@@ -264,6 +267,7 @@ def load_application_data_and_pdfs(conn, council_name: str, application_info: di
             - public_interest_score: float
             - status_type: str
             - application_type: str
+            - source_url: str
             - documents: list of dictionaries, where each dictionary should contain the following keys:
                 - file_path: str (local file path to the PDF document)
                 - document_type: str
