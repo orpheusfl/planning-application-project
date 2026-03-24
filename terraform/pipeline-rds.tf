@@ -9,25 +9,32 @@ resource "aws_db_subnet_group" "pipeline-rds-subnet-group" {
   }
 }
 
-# Create a Security Group for the RDS instance
-resource "aws_security_group" "pipeline-rds-sg" {
-  name        = "c22-planning-pipeline-rds-sg"
-  description = "Allow inbound PostgreSQL traffic from within the VPC"
+# Create a New Security Group for the RDS instance
+resource "aws_security_group" "pipeline-rds-sg-v2" {
+  name        = "c22-planning-pipeline-rds-sg-v2"
+  description = "Allow inbound PostgreSQL traffic from the public internet"
   vpc_id      = data.aws_vpc.c22_vpc.id
 
+  # Inbound Rules (Ingress)
   ingress {
-    description = "PostgreSQL access from VPC"
-    from_port   = 5432
-    to_port     = 5432
-    protocol    = "tcp"
-    cidr_blocks = [data.aws_vpc.c22_vpc.cidr_block] 
+    description      = "PostgreSQL from anywhere"
+    from_port        = 5432
+    to_port          = 5432
+    protocol         = "tcp"
+    cidr_blocks      = ["0.0.0.0/0"] # The "Anywhere" setting
   }
 
+  # Outbound Rules (Egress)
   egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
+    description      = "Allow all outbound traffic"
+    from_port        = 0
+    to_port          = 0
+    protocol         = "-1" # -1 means all protocols
+    cidr_blocks      = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name = "c22-planning-pipeline-rds-sg-v2"
   }
 }
 
@@ -46,7 +53,7 @@ resource "aws_db_instance" "pipeline-planning-db" {
   password               = "password123!" # Change later and store in Secrets Manager
   
   db_subnet_group_name   = aws_db_subnet_group.pipeline-rds-subnet-group.name
-  vpc_security_group_ids = [aws_security_group.pipeline-rds-sg.id]
+  vpc_security_group_ids = [aws_security_group.pipeline-rds-sg-v2.id]
   
   publicly_accessible    = false 
   skip_final_snapshot    = true  
