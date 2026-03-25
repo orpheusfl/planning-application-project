@@ -24,6 +24,7 @@ from .db import get_connection
 from .geo import generate_circle_polygon, geocode_postcode
 from .subscribers import (
     deactivate_all_subscriptions,
+    deactivate_subscriptions,
     get_active_subscriptions,
     insert_subscriber,
 )
@@ -133,6 +134,72 @@ def _show_subscribe_dialog() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Unsubscribe dialog
+# ---------------------------------------------------------------------------
+@st.dialog("Manage subscriptions")
+def _show_unsubscribe_dialog() -> None:
+    """Modal form for viewing and removing active subscriptions."""
+    email = st.text_input("Email address", placeholder="you@example.com")
+
+    if not email or "@" not in email:
+        st.caption("Enter your email to view active subscriptions.")
+        return
+
+    try:
+        conn = get_connection()
+        subs = get_active_subscriptions(conn, email)
+    except Exception:
+        st.error("Could not fetch subscriptions. Please try again.")
+        logging.exception("Failed to fetch subscriptions for unsubscribe")
+        return
+
+    if not subs:
+        st.info("No active subscriptions found for this email.")
+        return
+
+    st.markdown(f"**{len(subs)} active subscription(s):**")
+
+    def _on_select_all_change():
+        val = st.session_state["unsub_select_all"]
+        for sub in subs:
+            st.session_state[f"unsub_{sub['subscriber_id']}"] = val
+
+    select_all = st.checkbox(
+        "Select all", key="unsub_select_all", on_change=_on_select_all_change
+    )
+
+    selected_ids: list[int] = []
+    for sub in subs:
+        label = (
+            f"{sub['postcode']} — {sub['radius_miles']} mi radius, "
+            f"min score {sub['min_interest_score']}"
+        )
+        checked = st.checkbox(
+            label,
+            key=f"unsub_{sub['subscriber_id']}",
+        )
+        if checked:
+            selected_ids.append(sub["subscriber_id"])
+
+    if st.button(
+        "Unsubscribe",
+        type="primary",
+        disabled=len(selected_ids) == 0,
+    ):
+        try:
+            conn = get_connection()
+            deactivate_subscriptions(conn, selected_ids)
+            count = len(selected_ids)
+            st.success(
+                f"Unsubscribed from {count} "
+                f"subscription{'s' if count != 1 else ''}."
+            )
+        except Exception:
+            st.error("Something went wrong. Please try again.")
+            logging.exception("Unsubscribe failed")
+
+
+# ---------------------------------------------------------------------------
 # Sidebar
 # ---------------------------------------------------------------------------
 def render_sidebar(
@@ -198,6 +265,14 @@ def render_sidebar(
         "📬 Subscribe to weekly updates", use_container_width=True
     ):
         _show_subscribe_dialog()
+
+    if st.sidebar.button(
+        "Unsubscribe",
+        use_container_width=True,
+        key="unsubscribe_link",
+        type="tertiary",
+    ):
+        _show_unsubscribe_dialog()
 
     # Clear persisted map selection when any filter changes
     filter_fingerprint = (

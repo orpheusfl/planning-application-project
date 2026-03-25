@@ -6,6 +6,7 @@ import pytest
 
 from utils.subscribers import (
     deactivate_all_subscriptions,
+    deactivate_subscriptions,
     get_active_subscriptions,
     insert_subscriber,
 )
@@ -139,3 +140,48 @@ class TestInsertSubscriber:
 
         params = cursor.execute.call_args[0][1]
         assert params == ("other@mail.com", "E2 0HU", 51.53, -0.05, 2.0, 5)
+
+
+class TestDeactivateSubscriptions:
+    """Tests for subscribers.deactivate_subscriptions."""
+
+    def test_executes_update_with_ids(self, mock_db_connection):
+        conn, cursor = mock_db_connection
+
+        deactivate_subscriptions(conn, [1, 2, 3])
+
+        cursor.execute.assert_called_once()
+        sql = cursor.execute.call_args[0][0]
+        assert "UPDATE" in sql.upper()
+        assert "subscribers" in sql
+
+    def test_passes_subscriber_ids_as_parameter(self, mock_db_connection):
+        conn, cursor = mock_db_connection
+
+        deactivate_subscriptions(conn, [10, 20])
+
+        params = cursor.execute.call_args[0][1]
+        assert params == ([10, 20],)
+
+    def test_commits_after_update(self, mock_db_connection):
+        conn, cursor = mock_db_connection
+
+        deactivate_subscriptions(conn, [1])
+
+        conn.commit.assert_called_once()
+
+    def test_empty_list_skips_query(self, mock_db_connection):
+        conn, cursor = mock_db_connection
+
+        deactivate_subscriptions(conn, [])
+
+        cursor.execute.assert_not_called()
+        conn.commit.assert_not_called()
+
+    def test_single_id(self, mock_db_connection):
+        conn, cursor = mock_db_connection
+
+        deactivate_subscriptions(conn, [42])
+
+        params = cursor.execute.call_args[0][1]
+        assert params == ([42],)

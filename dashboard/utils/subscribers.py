@@ -30,6 +30,23 @@ def deactivate_all_subscriptions(conn, email: str) -> None:
     conn.commit()
 
 
+def deactivate_subscriptions(conn, subscriber_ids: list[int]) -> None:
+    """Soft-delete specific subscriptions by their IDs."""
+    if not subscriber_ids:
+        return
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE subscribers
+               SET unsubscribed_at = NOW()
+             WHERE subscriber_id = ANY(%s)
+               AND unsubscribed_at IS NULL
+            """,
+            (subscriber_ids,),
+        )
+    conn.commit()
+
+
 def insert_subscriber(
     conn,
     email: str,
