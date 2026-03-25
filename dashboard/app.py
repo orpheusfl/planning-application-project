@@ -8,7 +8,7 @@ and per-application detail views including AI summaries and documents.
 
 import streamlit as st
 
-from components import (
+from utils.components import (
     get_selected_from_map,
     marker_color,
     render_detail,
@@ -16,7 +16,7 @@ from components import (
     render_search_bar,
     render_sidebar,
 )
-from config import CSS
+from utils.config import CSS
 from dummy_data import load_applications, load_documents
 
 # ---------------------------------------------------------------------------

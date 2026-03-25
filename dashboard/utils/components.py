@@ -7,8 +7,8 @@ import streamlit.components.v1 as components
 import pandas as pd
 import pydeck as pdk
 
-import filters
-from config import (
+from . import filters
+from .config import (
     CSS,
     DEFAULT_MARKER_COLOR,
     MAP_STYLE,
@@ -20,9 +20,9 @@ from config import (
     STATUS_CSS_CLASSES,
     TOWER_HAMLETS_CENTER,
 )
-from db import get_connection
-from geo import generate_circle_polygon, geocode_postcode
-from subscribers import (
+from .db import get_connection
+from .geo import generate_circle_polygon, geocode_postcode
+from .subscribers import (
     deactivate_all_subscriptions,
     get_active_subscriptions,
     insert_subscriber,

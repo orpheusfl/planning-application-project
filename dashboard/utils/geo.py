@@ -5,7 +5,7 @@ import math
 import requests
 import streamlit as st
 
-from config import EARTH_RADIUS_MILES, RADIUS_CIRCLE_SEGMENTS
+from .config import EARTH_RADIUS_MILES, RADIUS_CIRCLE_SEGMENTS
 
 
 @st.cache_data(ttl=3600)
