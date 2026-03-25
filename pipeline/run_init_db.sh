@@ -9,8 +9,8 @@ echo "Starting database initialization..."
 export DB_HOST="c22-planning-pipeline-db.c57vkec7dkkx.eu-west-2.rds.amazonaws.com"
 export DB_PORT="5432"
 export DB_NAME="planningdata"
-export DB_USER="c22_planners"
-export PGPASSWORD="password123!"
+export DB_USER=""
+export PGPASSWORD=""
 # =========================================================
 
 SQL_FILE="rds-init.sql"
