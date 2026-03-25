@@ -22,6 +22,9 @@ provider "aws" {
 # Fetches the current AWS region dynamically for use in other resources
 data "aws_region" "current" {}
 
+# Fetches the current AWS account ID for use in resource naming
+data "aws_caller_identity" "current" {}
+
 # Fetches the existing VPC using its Name tag
 data "aws_vpc" "c22_vpc" {
   filter {
