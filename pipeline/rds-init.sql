@@ -1,4 +1,4 @@
--- init.sql
+-- rds-init.sql
 
 -- ==========================================
 -- 1. Create Independent/Reference Tables
