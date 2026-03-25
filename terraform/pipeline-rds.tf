@@ -48,9 +48,9 @@ resource "aws_db_instance" "pipeline-planning-db" {
   storage_type           = "gp3"
   db_name                = var.rds_database
   
-  # Use credentials from Secrets Manager
+  # Use credentials from Terraform variable
   username               = var.rds_username
-  password               = random_password.pipeline-db-password.result
+  password               = var.rds_password
   
   db_subnet_group_name   = aws_db_subnet_group.pipeline-rds-subnet-group.name
   vpc_security_group_ids = [aws_security_group.pipeline-rds-sg-v2.id]

@@ -37,3 +37,9 @@ variable "lambda_container_image" {
   type        = string
 }
 
+variable "rds_password" {
+  description = "Password for the RDS database - should be provided from .env file"
+  type        = string
+  sensitive   = true
+}
+

@@ -3,20 +3,42 @@ set -e
 
 echo "Starting database initialization..."
 
-# =========================================================
-# VARIABLES DYNAMICALLY INJECTED BY TERRAFORM
-# =========================================================
-export DB_HOST="c22-planning-pipeline-db.c57vkec7dkkx.eu-west-2.rds.amazonaws.com"
-export DB_PORT="5432"
-export DB_NAME="planningdata"
-export DB_USER="planning_admin"
-export PGPASSWORD="pGska6b<h2?kTEJA"
-# =========================================================
+# Load environment variables from .env file
+if [ -f ".env" ]; then
+    echo "Loading credentials from .env file..."
+    source .env
+else
+    echo "Error: .env file not found!"
+    echo "Please create a .env file with the following variables:"
+    echo "  DB_USER=<your-db-user>"
+    echo "  DB_PASSWORD=<your-db-password>"
+    echo "  DB_NAME=<your-db-name>"
+    echo "  DB_PORT=<your-db-port>"
+    exit 1
+fi
 
-SQL_FILE="init.sql"
+# Fetch DB_HOST from Terraform output
+echo "Fetching RDS endpoint from Terraform output..."
+DB_HOST=$(terraform output -raw rds_endpoint | cut -d: -f1)
+
+if [ -z "$DB_HOST" ]; then
+    echo "Error: Could not fetch RDS endpoint from terraform output"
+    echo "Make sure you have run 'terraform apply' successfully"
+    exit 1
+fi
+
+# Validate required environment variables
+if [ -z "$DB_PORT" ] || [ -z "$DB_NAME" ] || [ -z "$DB_USER" ] || [ -z "$DB_PASSWORD" ]; then
+    echo "Error: Missing required environment variables in .env file"
+    exit 1
+fi
+
+export PGPASSWORD="$DB_PASSWORD"
+
+SQL_FILE="../pipeline/rds-init.sql"
 
 if [ ! -f "$SQL_FILE" ]; then
-    echo "Error: SQL file '$SQL_FILE' not found in the current directory!"
+    echo "Error: SQL file '$SQL_FILE' not found!"
     exit 1
 fi
 
