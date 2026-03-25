@@ -20,6 +20,21 @@ resource "aws_security_group" "c22-planning-lambda-sg" {
     description = "Allow Lambda to reach AWS services (S3, Secrets Manager)"
   }
 
+  egress {
+    from_port   = 53
+    to_port     = 53
+    protocol    = "udp"
+    cidr_blocks = ["0.0.0.0/0"]
+    description = "Allow DNS (UDP) to VPC resolver"
+  }
+
+  egress {
+    from_port   = 53
+    to_port     = 53
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+    description = "Allow DNS (TCP) to VPC resolver"
+  }
   tags = {
     Name = "c22-planning-lambda-sg"
   }
