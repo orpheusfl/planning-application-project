@@ -2,3 +2,6 @@
 pytest
 requests
 beautifulsoup4
+selenium
+retrying
+

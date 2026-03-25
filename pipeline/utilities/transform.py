@@ -25,13 +25,19 @@
     }
     """
 
+import logging
+import pickle
+from selenium import webdriver
 import shutil
 import tempfile
 from datetime import datetime
+import time
 from pathlib import Path
 import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
+
+logger = logging.getLogger(__name__)
 
 
 class Application:
@@ -44,7 +50,8 @@ class Application:
                  address: str,
                  validation_date: str,
                  status: str,
-                 pdfs: list[dict]) -> None:
+                 pdfs: list[dict],
+                 application_url: str | None = None) -> None:
         """Initialize with raw input data. Call process() to transform and enrich.
 
         Args:
@@ -55,6 +62,7 @@ class Application:
             validation_date: Date of validation as string (e.g., "Fri 20 Mar 2026")
             status: Current status of the application
             pdfs: List of dicts with 'pdf_url' and 'document_type' keys
+            application_url: Optional URL to the application details page for establishing session context
         """
         self.application_number = application_number
         self.application_type = application_type
@@ -65,6 +73,7 @@ class Application:
         self.validation_date: datetime | None = None
         self.status = status
         self.ai_summary: str | None = None
+        self.application_url = application_url
         self.public_interest_score: int | None = None
         self.pdfs: list[dict] | None = None
 
@@ -79,10 +88,19 @@ class Application:
 
     def process(self) -> None:
         """Transform and enrich raw input data. Call this after __init__ to populate all fields."""
+        logger.info(
+            f"Starting process pipeline for application {self.application_number}")
         try:
+            logger.info("Processing address...")
             self._process_address()
+            logger.info("Processing validation date...")
             self._process_validation_date()
+            logger.info("Processing PDFs...")
             self._process_pdfs()
+            logger.info("Process pipeline completed successfully")
+        except Exception as e:
+            logger.error(f"Error during process pipeline: {e}", exc_info=True)
+            raise
         finally:
             self._cleanup_temp_files()
 
@@ -115,54 +133,11 @@ class Application:
         self.public_interest_score = pdf_analysis['public_interest_score']
         self.pdfs = self.store_pdf_data(self._raw_pdfs)
 
-    def extract_pdf_from_url(self, url: str) -> Path:
-        """Download and extract PDF file from URL to temporary storage.
-
-        Args:
-            url: URL to the PDF file
-
-        Returns:
-            Path to the downloaded PDF file in temp directory
-        """
-        # Create a session to handle cookies and retries
-        session = requests.Session()
-
-        # Configure retry strategy for resilience
-        retry_strategy = Retry(
-            total=3,
-            backoff_factor=1,
-            status_forcelist=[429, 500, 502, 503, 504],
-        )
-        adapter = HTTPAdapter(max_retries=retry_strategy)
-        session.mount("http://", adapter)
-        session.mount("https://", adapter)
-
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-            'Accept': 'application/pdf,text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-            'Accept-Language': 'en-US,en;q=0.5',
-            'Accept-Encoding': 'gzip, deflate',
-            'Referer': 'https://development.towerhamlets.gov.uk/',
-            'Connection': 'keep-alive',
-            'Upgrade-Insecure-Requests': '1'
-            'Cookie'
-        }
-
-        # First request to establish session and get cookie
-        session.get('https://development.towerhamlets.gov.uk/',
-                    verify=False, headers=headers)
-
-        # Now download the PDF with the session cookie
-        response = session.get(
-            url, verify=False, headers=headers, allow_redirects=True, timeout=30)
-        response.raise_for_status()
-
-        pdf_path = self._temp_dir / Path(url).name
-        pdf_path.write_bytes(response.content)
-        return pdf_path
-
     def store_pdf_data(self, pdfs: list[dict]) -> list[dict]:
         """Extract PDF files from URLs to temp storage with document type metadata.
+
+        Uses Selenium to maintain an active session while downloading PDFs, avoiding
+        authentication timeout issues.
 
         Args:
             pdfs: List of dicts with 'pdf_url' and 'document_type' keys
@@ -170,14 +145,94 @@ class Application:
         Returns:
             List of dicts with 'document_type' and 'pdf_data' (path) keys
         """
-        stored_pdfs = []
-        for pdf in pdfs:
-            pdf_path = self.extract_pdf_from_url(pdf['pdf_url'])
-            stored_pdfs.append({
-                'document_type': pdf['document_type'],
-                'pdf_data': pdf_path
+        logger.info(f"Starting PDF extraction for {len(pdfs)} PDFs")
+        driver = None
+        try:
+            # Create Selenium driver and navigate to application page to authenticate
+            driver = webdriver.Chrome()
+            url = self.application_url or 'https://development.towerhamlets.gov.uk/'
+            driver.get(url)
+            time.sleep(5)  # Wait for cookies to be set
+            logger.info("Authenticated session established with browser")
+
+            # Extract cookies from the active session
+            cookies = driver.get_cookies()
+            logger.info(f"Retrieved {len(cookies)} cookies from Selenium")
+
+            # Create a requests session with the active cookies
+            session = requests.Session()
+            session.verify = False
+            session.headers.update({
+                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
             })
-        return stored_pdfs
+
+            # Add cookies to the session while the Selenium session is still active
+            for cookie in cookies:
+                session.cookies.set(
+                    cookie['name'],
+                    cookie['value'],
+                    domain=cookie.get('domain', ''),
+                    path=cookie.get('path', '/')
+                )
+
+            # Download all PDFs while the authenticated session is active
+            stored_pdfs = []
+            for idx, pdf in enumerate(pdfs, 1):
+                logger.info(
+                    f"Processing PDF {idx}/{len(pdfs)}: {pdf['document_type']}")
+                try:
+                    pdf_path = self._download_pdf(session, pdf['pdf_url'])
+                    stored_pdfs.append({
+                        'document_type': pdf['document_type'],
+                        'pdf_data': pdf_path
+                    })
+                except Exception as e:
+                    logger.error(
+                        f"Failed to extract PDF {idx}: {e}", exc_info=True)
+                    raise
+
+            logger.info(f"All {len(stored_pdfs)} PDFs extracted successfully")
+            return stored_pdfs
+
+        finally:
+            # Ensure driver is closed
+            if driver:
+                driver.quit()
+
+    def _download_pdf(self, session: requests.Session, url: str) -> Path:
+        """Download PDF using an authenticated session.
+
+        Args:
+            session: Authenticated requests.Session
+            url: URL to the PDF file
+
+        Returns:
+            Path to the downloaded PDF file
+        """
+        logger.info(f"Downloading PDF from: {url}")
+        try:
+            response = session.get(url, stream=True)
+            response.raise_for_status()
+
+            pdf_filename = url.split('/')[-1]
+            pdf_path = self._temp_dir / pdf_filename
+
+            bytes_downloaded = 0
+            with open(pdf_path, 'wb') as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    f.write(chunk)
+                    bytes_downloaded += len(chunk)
+
+            logger.info(
+                f"PDF downloaded successfully ({bytes_downloaded} bytes) to {pdf_path}")
+            return pdf_path
+        except requests.exceptions.RequestException as e:
+            logger.error(
+                f"HTTP request error downloading PDF: {e}", exc_info=True)
+            raise
+        except Exception as e:
+            logger.error(f"Error downloading PDF: {e}", exc_info=True)
+            raise
 
     def extract_text_from_pdf(self, pdf_path: Path) -> str:
         """Extract main body text from PDF file.
@@ -295,6 +350,12 @@ class Application:
 
 
 if __name__ == "__main__":
+    # Configure logging to show important events only
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s'
+    )
+
     sample_application = Application(
         application_number="PA/25/00973/A1",
         application_type="Full Planning Permission",
@@ -307,14 +368,29 @@ if __name__ == "__main__":
              "document_type": "Planning Statement"},
             {"pdf_url": "https://development.towerhamlets.gov.uk/online-applications/files/6A4BC53103A5828430C02EA01F8277B2/pdf/PA_25_00973_A1-ADDENDUM___PART_1-2292216.pdf",
              "document_type": "Design & Access Statement"}
-        ]
+        ],
+        application_url="https://development.towerhamlets.gov.uk/online-applications/applicationDetails.do?activeTab=documents&keyVal=DCAPR_148275"
     )
 
     try:
-        path_ = sample_application.extract_pdf_from_url(
-            "https://development.towerhamlets.gov.uk/online-applications/pagedSearchResults.do?action=page&searchCriteria.page=1")
-        print(f"PDF downloaded to: {path_}")
+        # Download PDFs using authenticated Selenium session
+        pdf_data = sample_application.store_pdf_data(
+            sample_application._raw_pdfs)
+
+        # Create downloads directory if it doesn't exist
+        downloads_dir = Path(__file__).parent / "downloads"
+        downloads_dir.mkdir(exist_ok=True)
+
+        # Copy PDFs to downloads directory
+        for pdf in pdf_data:
+            final_path = downloads_dir / pdf['pdf_data'].name
+            shutil.copy(pdf['pdf_data'], final_path)
+            print(f"Downloaded {pdf['document_type']}: {final_path}")
+
     except requests.exceptions.RequestException as e:
         print(f"Error downloading PDF: {e}")
     except Exception as e:
         print(f"Unexpected error: {e}")
+    finally:
+        # Clean up temp files after testing
+        sample_application._cleanup_temp_files()
