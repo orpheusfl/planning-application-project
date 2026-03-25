@@ -17,7 +17,7 @@ from utils.components import (
     render_sidebar,
 )
 from utils.config import CSS
-from dummy_data import load_applications, load_documents
+from utils.queries import load_applications, load_documents
 
 # ---------------------------------------------------------------------------
 # Page config — must be the first Streamlit command
