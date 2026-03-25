@@ -247,7 +247,7 @@ def load_document_metadata_to_rds(conn, table_name: str, application_id: int, s3
                 INSERT INTO {table_name} (
                     application_id, 
                     document_type_id, 
-                    s3_key
+                    s3_object_key
                 ) VALUES (%s, %s, %s)
             """
             cursor.execute(insert_query, (
