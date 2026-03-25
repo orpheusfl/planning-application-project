@@ -1,6 +1,7 @@
 # S3 Bucket for pipeline data
 resource "aws_s3_bucket" "c22-planning-s3" {
   bucket = "c22-planning-s3-${data.aws_caller_identity.current.account_id}"
+  bucket = "c22-planning-s3"
 
   tags = {
     Name = "c22-planning-s3"
