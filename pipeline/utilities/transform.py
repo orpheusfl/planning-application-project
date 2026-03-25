@@ -1,32 +1,6 @@
-"""Utilities for transforming planning application data.
-    This module will take in:
-
-    {application_number:
-    address:
-    validation_date:
-    description:
-    status:
-    application_type:
-    pdfs: list[{pdf_url: str, document_type: str}]}
-
-    And will output a dictionary ready to be loaded into RDS with the following structure:
-    {
-    application_number: str
-    application_type: str
-    address: str
-    postcode: str
-    lat: float
-    long: float
-    validation_date: datetime
-    status: str
-    ai_summary: str
-    public_interest_score: int
-    pdfs: list[dict{document_type: str, pdf_data: bytes}]
-    }
-    """
+"""Utilities for transforming planning application data."""
 
 import logging
-import pickle
 from selenium import webdriver
 import shutil
 import tempfile
@@ -34,10 +8,22 @@ from datetime import datetime
 import time
 from pathlib import Path
 import requests
-from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
+import fitz  # PyMuPDF
+from dotenv import load_dotenv
+import os
+import openai
+import json
+import re
+from dateutil import parser as date_parser
+
 
 logger = logging.getLogger(__name__)
+
+load_dotenv()  # Load environment variables from .env file
+
+API_KEY = os.getenv("OPENAI_API_KEY")
+
+POSTCODE_REGEX = r"\b[A-Z]{1,2}\d[A-Z\d]?\s?\d[A-Z]{2}\b"
 
 
 class Application:
@@ -111,14 +97,19 @@ class Application:
 
     def _process_address(self) -> None:
         """Extract postcode and coordinates from address."""
-        address_data = self.get_postcode_and_address_from_address(
-            self._raw_address)
+        address_data = self.format_address(self._raw_address)
         self.address = address_data['address']
         self.postcode = address_data['postcode']
 
-        coordinates = self.get_lat_and_long_from_address(self._raw_address)
-        self.lat = coordinates['lat']
-        self.long = coordinates['long']
+        if self.postcode:
+            coordinates = self.geocode_postcode(self.postcode)
+            if coordinates:
+                self.lat = coordinates[0]
+                self.long = coordinates[1]
+            else:
+                logger.warning(f"Could not geocode postcode {self.postcode}")
+                self.lat = None
+                self.long = None
 
     def _process_validation_date(self) -> None:
         """Parse validation date string to datetime."""
@@ -128,28 +119,28 @@ class Application:
 
     def _process_pdfs(self) -> None:
         """Extract PDFs, analyze content, and store results."""
-        pdf_analysis = self.pdf_urls_to_analysis(self._raw_pdfs)
-        self.ai_summary = pdf_analysis['ai_summary']
-        self.public_interest_score = pdf_analysis['public_interest_score']
-        self.pdfs = self.store_pdf_data(self._raw_pdfs)
+        # Create authenticated session once and reuse for both analysis and storage
+        session = self._create_authenticated_session()
 
-    def store_pdf_data(self, pdfs: list[dict]) -> list[dict]:
-        """Extract PDF files from URLs to temp storage with document type metadata.
+        try:
+            pdf_analysis = self.pdf_urls_to_analysis(self._raw_pdfs, session)
+            self.ai_summary = pdf_analysis['ai_summary']
+            self.public_interest_score = pdf_analysis['public_interest_score']
 
-        Uses Selenium to maintain an active session while downloading PDFs, avoiding
-        authentication timeout issues.
+            # Store PDFs using the same authenticated session (no second download)
+            self.pdfs = self._extract_downloaded_pdfs(self._raw_pdfs, session)
+        finally:
+            session.close()
 
-        Args:
-            pdfs: List of dicts with 'pdf_url' and 'document_type' keys
+    def _create_authenticated_session(self) -> requests.Session:
+        """Create and return an authenticated requests session using Selenium.
 
         Returns:
-            List of dicts with 'document_type' and 'pdf_data' (path) keys
+            Authenticated requests.Session with cookies from browser
         """
-        logger.info(f"Starting PDF extraction for {len(pdfs)} PDFs")
-        driver = None
+        driver = webdriver.Chrome()
         try:
-            # Create Selenium driver and navigate to application page to authenticate
-            driver = webdriver.Chrome()
+            # Navigate to application page to authenticate
             url = self.application_url or 'https://development.towerhamlets.gov.uk/'
             driver.get(url)
             time.sleep(5)  # Wait for cookies to be set
@@ -175,31 +166,49 @@ class Application:
                     path=cookie.get('path', '/')
                 )
 
-            # Download all PDFs while the authenticated session is active
-            stored_pdfs = []
-            for idx, pdf in enumerate(pdfs, 1):
-                logger.info(
-                    f"Processing PDF {idx}/{len(pdfs)}: {pdf['document_type']}")
-                try:
-                    pdf_path = self._download_pdf(session, pdf['pdf_url'])
-                    stored_pdfs.append({
-                        'document_type': pdf['document_type'],
-                        'pdf_data': pdf_path
-                    })
-                except Exception as e:
-                    logger.error(
-                        f"Failed to extract PDF {idx}: {e}", exc_info=True)
-                    raise
-
-            logger.info(f"All {len(stored_pdfs)} PDFs extracted successfully")
-            return stored_pdfs
-
+            return session
         finally:
-            # Ensure driver is closed
-            if driver:
-                driver.quit()
+            driver.quit()
 
-    def _download_pdf(self, session: requests.Session, url: str) -> Path:
+    def _extract_downloaded_pdfs(self, pdfs: list[dict], session: requests.Session) -> list[dict]:
+        """Convert downloaded PDF paths to storage format.
+
+        Assumes PDFs have already been downloaded and are in temp storage.
+        Returns metadata with paths ready for storage.
+
+        Args:
+            pdfs: List of dicts with 'pdf_url' and 'document_type' keys
+            session: Authenticated session (used to download PDFs if needed)
+
+        Returns:
+            List of dicts with 'document_type' and 'pdf_data' (path) keys
+        """
+        logger.info(f"Starting PDF extraction for {len(pdfs)} PDFs")
+        stored_pdfs = []
+
+        for idx, pdf in enumerate(pdfs, 1):
+            logger.info(
+                f"Processing PDF {idx}/{len(pdfs)}: {pdf['document_type']}")
+            try:
+                pdf_path = self._download_pdf(session, pdf['pdf_url'])
+                if pdf_path is None:
+                    logger.info(
+                        f"Skipping {pdf['document_type']} - PDF not available")
+                    continue
+
+                stored_pdfs.append({
+                    'document_type': pdf['document_type'],
+                    'pdf_data': pdf_path
+                })
+            except Exception as e:
+                logger.error(
+                    f"Failed to extract PDF {idx}: {e}", exc_info=True)
+                raise
+
+        logger.info(f"All {len(stored_pdfs)} PDFs extracted successfully")
+        return stored_pdfs
+
+    def _download_pdf(self, session: requests.Session, url: str) -> Path | None:
         """Download PDF using an authenticated session.
 
         Args:
@@ -207,11 +216,11 @@ class Application:
             url: URL to the PDF file
 
         Returns:
-            Path to the downloaded PDF file
+            Path to the downloaded PDF file, or None if unavailable
         """
         logger.info(f"Downloading PDF from: {url}")
         try:
-            response = session.get(url, stream=True)
+            response = session.get(url, stream=True, verify=False)
             response.raise_for_status()
 
             pdf_filename = url.split('/')[-1]
@@ -226,6 +235,12 @@ class Application:
             logger.info(
                 f"PDF downloaded successfully ({bytes_downloaded} bytes) to {pdf_path}")
             return pdf_path
+        except requests.exceptions.HTTPError as e:
+            if e.response.status_code == 404:
+                logger.warning(f"PDF not found (404): {url}")
+                return None
+            logger.error(f"HTTP error downloading PDF: {e}", exc_info=True)
+            raise
         except requests.exceptions.RequestException as e:
             logger.error(
                 f"HTTP request error downloading PDF: {e}", exc_info=True)
@@ -243,7 +258,16 @@ class Application:
         Returns:
             Extracted text content
         """
-        pass
+
+        try:
+            doc = fitz.open(pdf_path)
+            text = ""
+            for page in doc:
+                text += page.get_text()
+            return text
+        except Exception as e:
+            logger.error(f"Error extracting text from PDF: {e}", exc_info=True)
+            raise
 
     def clean_pdf_text(self, text: str) -> str:
         """Remove irrelevant information from extracted PDF text.
@@ -254,22 +278,63 @@ class Application:
         Returns:
             Cleaned text ready for analysis
         """
-        pass
+        text = text.strip()
+        lines = text.split('\n')
+        cleaned_lines = [line.strip() for line in lines if line.strip()]
+        text = '\n'.join(cleaned_lines)
+        text = ' '.join(text.split())
+        return text
 
-    def build_llm_analysis_prompt(self, pdf_text: list[str], original_description: str) -> str:
+    def build_llm_analysis_prompt(self, pdf_data: list[dict], original_description: str) -> str:
         """Build structured prompt for LLM analysis combining PDF text and description.
 
         Args:
-            pdf_text: List of extracted and cleaned text from PDFs
+            pdf_data: List of dicts with 'document_type' and 'text' keys from extracted PDFs
             original_description: Original application description
 
         Returns:
-            Prompt string for LLM analysis
+            Prompt string for LLM analysis requesting JSON output
         """
-        pass
+        formatted_pdf_text = "\n\n".join(
+            f"{pdf['document_type'].upper()}:\n{pdf['text']}"
+            for pdf in pdf_data
+        )
+
+        prompt = f"""Analyze this planning application and return a JSON response with two fields:
+                    1. "summary": A 2-3 sentence summary highlighting key details residents need to know (housing units, density, public amenities, traffic impact, affordable housing percentage, environmental concerns)
+                    2. "public_interest_score": An integer from 1-10 assessing public interest level
+
+                    Respond ONLY with valid JSON, no additional text.
+
+                    Original Application Description:
+                    {original_description}
+
+                    Extracted PDF Content:
+                    {formatted_pdf_text}
+
+                    Focus the summary on: proposed uses, number of units/buildings, key impacts on the neighborhood, affordable housing provisions, and any notable amenities or concerns.
+
+                    Return format:
+                    {{"summary": "...", "public_interest_score": <number>}}"""
+        return prompt
+
+    def _setup_openai_client(self) -> openai.OpenAI:
+        """Set up OpenAI API client with the provided API key.
+
+        Returns:
+            Configured OpenAI client instance
+        """
+        try:
+            client = openai.OpenAI(api_key=API_KEY)
+            logger.info("OpenAI client initialized successfully")
+            return client
+        except Exception as e:
+            logger.error(
+                f"Error initializing OpenAI client: {e}", exc_info=True)
+            raise
 
     def analyse_pdf_text(self, prompt: str) -> dict:
-        """Analyze prompt using LLM API and return structured output.
+        """Analyze prompt using OpenAI LLM API and return structured output.
 
         Args:
             prompt: Prompt string for LLM analysis
@@ -277,46 +342,125 @@ class Application:
         Returns:
             Dict with 'ai_summary' (str) and 'public_interest_score' (int) keys
         """
-        pass
+        client = self._setup_openai_client()
 
-    def pdf_urls_to_analysis(self, pdfs: list[dict]) -> dict:
+        response = client.chat.completions.create(
+            model="gpt-5-nano",
+            messages=[
+                {"role": "system", "content": "You are a planning analyst that provides concise, resident-focused summaries. Always respond with valid JSON only."},
+                {"role": "user", "content": prompt}
+            ]
+        )
+
+        logger.info("Received response from OpenAI API")
+
+        json_text = response.choices[0].message.content
+        result = json.loads(json_text)
+
+        return {
+            'ai_summary': result['summary'],
+            'public_interest_score': result['public_interest_score']
+        }
+
+    def pdf_urls_to_analysis(self, pdfs: list[dict], session: requests.Session) -> dict:
         """Complete pipeline: extract PDFs, extract text, clean, analyze, and return results.
+
+        Downloads PDFs from provided URLs, extracts text from each, organizes by document type,
+        builds a structured prompt, and analyzes with OpenAI LLM.
 
         Args:
             pdfs: List of dicts with 'pdf_url' and 'document_type' keys
+            session: Authenticated requests.Session for downloading PDFs
 
         Returns:
             Dict with 'ai_summary' (str) and 'public_interest_score' (int) keys
         """
-        pass
+        logger.info(f"Starting PDF analysis pipeline for {len(pdfs)} PDFs")
 
-    def get_postcode_and_address_from_address(self, address: str) -> dict:
-        """Extract postcode and address components.
+        pdf_texts = []
 
-        Removes postcode from full address and formats both components.
+        for idx, pdf in enumerate(pdfs, 1):
+            logger.info(
+                f"Processing PDF {idx}/{len(pdfs)}: {pdf['document_type']}")
+            try:
+                pdf_path = self._download_pdf(session, pdf['pdf_url'])
+                if pdf_path is None:
+                    logger.info(
+                        f"Skipping {pdf['document_type']} - PDF not available")
+                    continue
+
+                raw_text = self.extract_text_from_pdf(pdf_path)
+                cleaned_text = self.clean_pdf_text(raw_text)
+
+                pdf_texts.append({
+                    'document_type': pdf['document_type'],
+                    'text': cleaned_text
+                })
+                logger.info(
+                    f"Successfully processed {pdf['document_type']}")
+
+            except Exception as e:
+                logger.error(
+                    f"Failed to process PDF {idx} ({pdf['document_type']}): {e}",
+                    exc_info=True
+                )
+                raise
+
+        logger.info("Building LLM analysis prompt")
+        prompt = self.build_llm_analysis_prompt(
+            pdf_texts, self._raw_description)
+
+        logger.info("Analyzing with OpenAI LLM")
+        analysis = self.analyse_pdf_text(prompt)
+
+        logger.info("PDF analysis completed successfully")
+        return analysis
+
+    def format_address(self, address: str) -> dict:
+        """Extract unique elements from the address string.
 
         Args:
             address: Full address string (e.g., "36A Grove Road, London, E3 5AX")
 
         Returns:
-            Dict with 'address' and 'postcode' keys
-            Example: {'address': '36A Grove Road, London', 'postcode': 'E35AX'}
+            Dict with 'street' (str), 'city' (str), 'postalcode' (str), and 'country' (str) keys
+            Example: {'street': '36A Grove Road', 'city': 'London', 'postalcode': 'E35AX', 'country': 'UK'}
         """
-        pass
 
-    def get_lat_and_long_from_address(self, address: str) -> dict:
-        """Get geographic coordinates for address using geocoding API.
+        address = address.strip()
+        postcode_match = re.search(POSTCODE_REGEX, address)
+        if not postcode_match:
+            logger.warning(f"No postcode found in address: {address}")
+            raise ValueError(
+                f"Could not extract postcode from address: {address}")
 
-        Args:
-            address: Full address string
+        postcode = postcode_match.group(0)
+        address_without_postcode = address.replace(
+            postcode, "").strip(", ").strip()
 
-        Returns:
-            Dict with 'lat' (float) and 'long' (float) keys
+        return {'address': address_without_postcode, 'postcode': postcode}
+
+    def geocode_postcode(self, postcode: str) -> tuple[float, float] | None:
+        """Convert a UK postcode to (lat, lon) via postcodes.io.
+
+        Results are cached for one hour to avoid repeated API calls.
+        Returns ``None`` when the postcode cannot be resolved.
         """
-        pass
+        try:
+            resp = requests.get(
+                f"https://api.postcodes.io/postcodes/{postcode.strip()}",
+                timeout=5,
+            )
+            data = resp.json()
+            if data["status"] == 200:
+                return data["result"]["latitude"], data["result"]["longitude"]
+        except requests.RequestException:
+            pass
+        return None
 
     def parse_validation_date_to_datetime(self, validation_date: str) -> datetime:
         """Parse validation date string to datetime object.
+        ensure this can handle various date formats and log any parsing issues for debugging.
 
         Args:
             validation_date: Date string (e.g., "Fri 20 Mar 2026")
@@ -324,7 +468,15 @@ class Application:
         Returns:
             Parsed datetime object
         """
-        pass
+
+        try:
+            parsed_date = date_parser.parse(
+                validation_date, fuzzy=True, dayfirst=True)
+            return parsed_date
+        except (ValueError, OverflowError) as e:
+            logger.error(
+                f"Error parsing validation date '{validation_date}': {e}", exc_info=True)
+            raise
 
     def to_dict(self) -> dict:
         """Convert application data to dictionary ready for database insertion.
@@ -347,50 +499,3 @@ class Application:
             'public_interest_score': self.public_interest_score,
             'pdfs': self.pdfs
         }
-
-
-if __name__ == "__main__":
-    # Configure logging to show important events only
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(levelname)s - %(message)s'
-    )
-
-    sample_application = Application(
-        application_number="PA/25/00973/A1",
-        application_type="Full Planning Permission",
-        description="Full planning application for the redevelopment of the site to provide non-residential floorspace/yard-space together with associated refuse stores, plant, secure cycle stores and car parking, and residential dwellings including affordable housing, together with the provision of landscaped public open space, refuse stores, plant, secure cycle stores and car parking for people with disabilities.",
-        address="Iceland Wharf, Iceland Road, London E3 2JP",
-        validation_date="Mon 09 Jun 2025",
-        status="Registered",
-        pdfs=[
-            {"pdf_url": "https://development.towerhamlets.gov.uk/online-applications/files/0D7EF369DE41A10749E37876158B9790/pdf/PA_25_00973_A1-ADDENDUM-2294022.pdf",
-             "document_type": "Planning Statement"},
-            {"pdf_url": "https://development.towerhamlets.gov.uk/online-applications/files/6A4BC53103A5828430C02EA01F8277B2/pdf/PA_25_00973_A1-ADDENDUM___PART_1-2292216.pdf",
-             "document_type": "Design & Access Statement"}
-        ],
-        application_url="https://development.towerhamlets.gov.uk/online-applications/applicationDetails.do?activeTab=documents&keyVal=DCAPR_148275"
-    )
-
-    try:
-        # Download PDFs using authenticated Selenium session
-        pdf_data = sample_application.store_pdf_data(
-            sample_application._raw_pdfs)
-
-        # Create downloads directory if it doesn't exist
-        downloads_dir = Path(__file__).parent / "downloads"
-        downloads_dir.mkdir(exist_ok=True)
-
-        # Copy PDFs to downloads directory
-        for pdf in pdf_data:
-            final_path = downloads_dir / pdf['pdf_data'].name
-            shutil.copy(pdf['pdf_data'], final_path)
-            print(f"Downloaded {pdf['document_type']}: {final_path}")
-
-    except requests.exceptions.RequestException as e:
-        print(f"Error downloading PDF: {e}")
-    except Exception as e:
-        print(f"Unexpected error: {e}")
-    finally:
-        # Clean up temp files after testing
-        sample_application._cleanup_temp_files()

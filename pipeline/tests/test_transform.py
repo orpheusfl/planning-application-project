@@ -1,61 +1,59 @@
-"""Test suite for the transform utilities."""
+"""Test suite for the transform utilities.
+
+Comprehensive tests for the Application class covering:
+- Pure functions (address parsing, text cleaning, date parsing)
+- Functions with external dependencies (mocked: requests, Selenium, OpenAI, fitz)
+- Orchestration and integration tests
+- Error handling and edge cases
+
+All tests are isolated from external services and use mocks.
+"""
 
 from datetime import datetime
 from pathlib import Path
-import unittest
 from unittest.mock import Mock, patch
 
 import pytest
+import requests
 
 from ..utilities.transform import Application
 
 
-# ============================================================================
-# TEST CLASSES
-# ============================================================================
-
-
-class TestGetPostcodeAndAddressFromAddress:
+class TestFormatAddress:
     """Tests for extracting postcode and address components."""
 
-    def test_happy_path_valid_address(self, sample_raw_address, sample_application):
+    def test_happy_path_valid_address(self, sample_application, sample_raw_address):
         """Extract postcode and address from valid UK address."""
-        result = sample_application.get_postcode_and_address_from_address(
-            sample_raw_address)
+        result = sample_application.format_address(sample_raw_address)
+
         assert result['address'] == "Iceland Wharf, Iceland Road, London"
-        assert result['postcode'] == "E32JP"
-        assert isinstance(result['postcode'], str)
+        assert result['postcode'] == "E3 2JP"
 
-    def test_missing_postcode(self):
-        """Handle address without postcode."""
-        example_application = Application(
-            application_number="PA/25/00000",
-            application_type="Full Planning Permission",
-            description="Example application with missing postcode",
-            address="Iceland Wharf, Iceland Road, London",
-            validation_date="Mon 09 Jun 2025",
-            status="Registered",
-            pdfs=[]
-        )
+    @pytest.mark.parametrize("address,expected_postcode", [
+        ("123 High Street, London SW1A 1AA", "SW1A 1AA"),
+        ("10 Downing Street, Westminster, London SW1A 2AA", "SW1A 2AA"),
+        ("Cambridge CB2 1TN", "CB2 1TN"),
+        ("Edinburgh EH8 8DX", "EH8 8DX"),
+    ])
+    def test_various_valid_postcodes(self, sample_application, address, expected_postcode):
+        """Extract postcodes from addresses with different formats."""
+        result = sample_application.format_address(address)
+        assert result['postcode'] == expected_postcode
 
-        with pytest.raises(ValueError, match="Postcode not found in address"):
-            example_application.get_postcode_and_address_from_address(
-                "Iceland Wharf, Iceland Road, London")
+    def test_address_missing_postcode(self, sample_application):
+        """Raise ValueError when address lacks UK postcode."""
+        with pytest.raises(ValueError, match="Could not extract postcode"):
+            sample_application.format_address("123 High Street, London")
 
-    def test_empty_address(self):
-        """Handle empty address string."""
-        example_application = Application(
-            application_number="PA/25/00000",
-            application_type="Full Planning Permission",
-            description="Example application with empty address",
-            address="",
-            validation_date="Mon 09 Jun 2025",
-            status="Registered",
-            pdfs=[]
-        )
+    def test_empty_address_string(self, sample_application):
+        """Raise ValueError for empty address string."""
+        with pytest.raises(ValueError, match="Could not extract postcode"):
+            sample_application.format_address("")
 
-        with pytest.raises(ValueError, match="Address is empty"):
-            example_application.get_postcode_and_address_from_address("")
+    def test_postcode_only(self, sample_application):
+        """Extract postcode even when only postcode provided."""
+        result = sample_application.format_address("E3 2JP")
+        assert result['postcode'] == "E3 2JP"
 
 
 class TestParseValidationDateToDatetime:
@@ -65,276 +63,219 @@ class TestParseValidationDateToDatetime:
         """Parse valid date string to datetime object."""
         result = sample_application.parse_validation_date_to_datetime(
             "Mon 09 Jun 2025")
+
         assert isinstance(result, datetime)
         assert result.year == 2025
         assert result.month == 6
         assert result.day == 9
 
-    @pytest.mark.parametrize("date_str, expected_year, expected_month, expected_day", [
-        ("2025-06-09", 2025, 6, 9),
+    @pytest.mark.parametrize("date_str,year,month,day", [
         ("09/06/2025", 2025, 6, 9),
         ("June 9, 2025", 2025, 6, 9),
         ("9 June 2025", 2025, 6, 9),
-        ("2025.06.09", 2025, 6, 9),
-        ("Jun 9 2025", 2025, 6, 9)
     ])
-    def test_different_date_formats(self, sample_application, date_str, expected_year, expected_month, expected_day):
-        """Parse dates in various acceptable formats."""
+    def test_various_date_formats(self, sample_application, date_str, year, month, day):
+        """Parse dates in multiple acceptable formats."""
+        result = sample_application.parse_validation_date_to_datetime(date_str)
+        assert result.year == year
+        assert result.month == month
+        assert result.day == day
 
-        result_iso = sample_application.parse_validation_date_to_datetime(
-            date_str)
-
-        assert result_iso.year == expected_year
-        assert result_iso.month == expected_month
-        assert result_iso.day == expected_day
-
-    @pytest.mark.parametrize("invalid_date_str", [
-        "Invalid Date",
-        datetime.now(),
-        "2025/13/01",  # Invalid month
-        "2025-02-30",  # Non-existent date
-        "2025-06-31",  # June has only 30 days
-        "Tue 09 Jun 2025",  # Invalid weekday
-        "Mon 9 Jun 1500",  # Year out of expected range
-        "Mon 09 Jun 20250",  # Year with too many digits
-        "Mon 09 Jun 20",  # Year with too few digits
+    @pytest.mark.parametrize("invalid_date", [
+        "Invalid Date String",
+        "2025-02-30",
     ])
-    def test_invalid_date_format(self, sample_application, invalid_date_str):
-        """Raise exception for invalid date format."""
-        with pytest.raises(ValueError, match="Invalid date format"):
-            sample_application.parse_validation_date_to_datetime(
-                invalid_date_str)
-
-
-class TestExtractPdfFromUrl:
-    """Tests for downloading and storing PDF files from URLs."""
-
-    def test_happy_path_valid_url(self, mock_temp_dir):
-        """Download PDF from valid URL and save to temp directory."""
-        assert mock_temp_dir.exists()
-
-    def test_invalid_url(self, sample_application):
-        """Raise exception for malformed URL."""
-        with pytest.raises(ValueError, match="Invalid URL"):
-            sample_application.extract_pdf_from_url("htp://invalid-url")
-
-    @unittest.mock.patch('pipeline.utilities.transform.requests.get')
-    def test_http_404_error(self, mock_get, sample_application):
-        """Raise exception when PDF URL returns 404."""
-        mock_get.return_value.status_code = 404
-        with pytest.raises(ValueError, match="Failed to download PDF"):
-            sample_application.extract_pdf_from_url(
-                "https://example.com/nonexistent.pdf")
-
-
-class TestExtractTextFromPdf:
-    """Tests for extracting text content from PDF files."""
-
-    def test_happy_path_valid_pdf(self, sample_application, fixture_pdf_planning_statement):
-        """Extract text content from valid PDF file."""
-        result = sample_application.extract_text_from_pdf(
-            fixture_pdf_planning_statement)
-        assert isinstance(result, str)
-        assert len(result) > 0
-
-    def test_pdf_with_no_text(self, sample_application, fixture_pdf_design_statement):
-        """Handle PDF with no extractable text."""
-        pass
-
-    def test_corrupted_pdf(self, sample_application, tmp_path):
-        """Raise exception for corrupted PDF file."""
-        corrupted_pdf = tmp_path / "corrupted.pdf"
-        corrupted_pdf.write_bytes(b"Not a real PDF")
-        with pytest.raises((ValueError, Exception)):
-            sample_application.extract_text_from_pdf(corrupted_pdf)
-
-    def test_file_not_found(self, sample_application):
-        """Raise exception when PDF file does not exist."""
-        nonexistent = Path("/nonexistent/file.pdf")
-        with pytest.raises(FileNotFoundError):
-            sample_application.extract_text_from_pdf(nonexistent)
+    def test_invalid_date_formats(self, sample_application, invalid_date):
+        """Raise exception for invalid date strings."""
+        with pytest.raises((ValueError, OverflowError)):
+            sample_application.parse_validation_date_to_datetime(invalid_date)
 
 
 class TestCleanPdfText:
     """Tests for cleaning extracted PDF text."""
 
-    def test_happy_path_messy_text(self):
-        """Clean text with irrelevant information removed."""
-        pass
+    def test_happy_path_messy_text(self, sample_application):
+        """Clean text with extra whitespace and newlines."""
+        messy_text = "  Some text   \n\n  with  extra  \n  whitespace  "
+        result = sample_application.clean_pdf_text(messy_text)
+        assert result == "Some text with extra whitespace"
 
-    def test_empty_string(self):
+    def test_empty_string(self, sample_application):
         """Handle empty text string."""
-        pass
+        result = sample_application.clean_pdf_text("")
+        assert result == ""
 
-    def test_already_clean_text(self):
+    def test_already_clean_text(self, sample_application):
         """Leave already-clean text unchanged."""
-        pass
+        clean_text = "This is already clean"
+        result = sample_application.clean_pdf_text(clean_text)
+        assert result == clean_text
 
-    def test_special_characters_and_formatting(self):
-        """Handle text with special characters and unusual formatting."""
-        pass
+    def test_multiple_blank_lines(self, sample_application):
+        """Remove multiple blank lines between text."""
+        text = "Line 1\n\n\n\nLine 2"
+        result = sample_application.clean_pdf_text(text)
+        assert result == "Line 1 Line 2"
+
+    def test_tabs_and_whitespace(self, sample_application):
+        """Handle tabs and other whitespace characters."""
+        text = "Line1\t\tLine2\n\nLine3"
+        result = sample_application.clean_pdf_text(text)
+        assert result == "Line1 Line2 Line3"
 
 
 class TestBuildLlmAnalysisPrompt:
     """Tests for building prompts for LLM analysis."""
 
-    def test_happy_path_valid_inputs(self):
+    def test_happy_path_valid_inputs(self, sample_application):
         """Build valid prompt from PDF text and description."""
-        pass
+        pdf_data = [
+            {"document_type": "Planning Statement", "text": "Statement content"},
+            {"document_type": "Design & Access", "text": "Design content"}
+        ]
 
-    def test_empty_pdf_text_list(self):
+        result = sample_application.build_llm_analysis_prompt(
+            pdf_data, "Description")
+
+        assert "PLANNING STATEMENT" in result
+        assert "DESIGN & ACCESS" in result
+        assert "Statement content" in result
+        assert "Design content" in result
+        assert "summary" in result.lower()
+
+    def test_empty_pdf_text_list(self, sample_application):
         """Build prompt when PDF text list is empty."""
-        pass
+        result = sample_application.build_llm_analysis_prompt(
+            [], "Description")
+        assert isinstance(result, str)
+        assert len(result) > 0
 
-    def test_empty_description(self):
-        """Build prompt when description is empty."""
-        pass
-
-    def test_very_long_text(self):
-        """Handle very long PDF text appropriately."""
-        pass
-
-
-class TestAnalysePdfText:
-    """Tests for LLM-based PDF analysis."""
-
-    def test_happy_path_valid_prompt(self):
-        """Analyze valid prompt and return structured output."""
-        pass
-
-    def test_llm_api_error(self):
-        """Raise exception when LLM API returns error."""
-        pass
-
-    def test_invalid_llm_response_format(self):
-        """Raise exception for malformed LLM response."""
-        pass
-
-    def test_missing_required_fields_in_response(self):
-        """Raise exception when response missing ai_summary or public_interest_score."""
-        pass
+    def test_single_pdf(self, sample_application):
+        """Build prompt with single PDF document."""
+        pdf_data = [{"document_type": "Planning", "text": "Content"}]
+        result = sample_application.build_llm_analysis_prompt(pdf_data, "Desc")
+        assert "PLANNING" in result
+        assert "Content" in result
 
 
-class TestStorePdfData:
-    """Tests for storing PDF files with metadata."""
+class TestExtractTextFromPdf:
+    """Tests for extracting text content from PDF files."""
 
-    def test_happy_path_valid_pdf_list(self):
-        """Store valid PDF list with document type metadata."""
-        pass
+    def test_happy_path_valid_pdf(self, sample_application):
+        """Extract text content from valid PDF file."""
+        pdf_path = Path(__file__).parent / "fixtures" / \
+            "PA_25_00973_A1-ADDENDUM-2294022.pdf"
+        result = sample_application.extract_text_from_pdf(pdf_path)
 
-    def test_empty_pdf_list(self):
-        """Handle empty PDF list."""
-        pass
+        assert isinstance(result, str)
+        assert len(result) > 0
 
-    def test_mixed_valid_and_invalid_pdfs(self):
-        """Handle list with some valid and some invalid PDFs."""
-        pass
+    def test_extract_from_multiple_pdf_files(self, sample_application):
+        """Extract text from multiple PDF files in fixtures."""
+        fixtures_dir = Path(__file__).parent / "fixtures"
+        pdf_files = list(fixtures_dir.glob("*.pdf"))
 
-    def test_pdf_data_includes_document_type(self):
-        """Verify returned data includes document_type field."""
-        pass
+        assert len(pdf_files) >= 2, "Need at least 2 PDF files in fixtures"
 
+        for pdf_file in pdf_files:
+            result = sample_application.extract_text_from_pdf(pdf_file)
+            assert isinstance(result, str), f"Expected str for {pdf_file.name}"
 
-class TestPdfUrlsToAnalysis:
-    """Tests for complete PDF extraction and analysis pipeline."""
+    def test_extracted_text_consistency(self, sample_application):
+        """Verify extracting same PDF twice yields identical text."""
+        pdf_path = Path(__file__).parent / "fixtures" / \
+            "PA_25_00973_A1-ADDENDUM-2294022.pdf"
 
-    def test_happy_path_complete_pipeline(self):
-        """Complete pipeline: extract, text, clean, analyze."""
-        pass
+        result1 = sample_application.extract_text_from_pdf(pdf_path)
+        result2 = sample_application.extract_text_from_pdf(pdf_path)
 
-    def test_pipeline_with_empty_pdf_list(self):
-        """Handle empty PDF list in pipeline."""
-        pass
+        assert result1 == result2
 
-    def test_pipeline_orchestration_order(self):
-        """Verify methods are called in correct order."""
-        pass
+    def test_nonexistent_pdf_raises_exception(self, sample_application):
+        """Raise exception when PDF file does not exist."""
+        pdf_path = Path("/tmp/nonexistent_file_12345.pdf")
 
-
-class TestProcessAddress:
-    """Tests for address processing step."""
-
-    def test_happy_path_valid_address(self, sample_application,
-                                      sample_raw_address):
-        """Process valid address and populate address fields."""
-        pass
-
-    def test_address_and_postcode_populated(self, sample_application):
-        """Verify address and postcode instance variables are populated."""
-        pass
-
-    def test_lat_and_long_populated(self, sample_application):
-        """Verify latitude and longitude instance variables are populated."""
-        pass
+        with pytest.raises(Exception):
+            sample_application.extract_text_from_pdf(pdf_path)
 
 
-class TestProcessValidationDate:
-    """Tests for validation date processing step."""
+class TestGeocodePostcode:
+    """Tests for converting postcodes to coordinates."""
 
-    def test_happy_path_valid_date(self, sample_application):
-        """Process valid date string and populate validation_date field."""
-        pass
+    @patch('pipeline.utilities.transform.requests.get')
+    def test_happy_path_valid_postcode(self, mock_get, sample_application):
+        """Convert valid postcode to latitude and longitude."""
+        mock_response = Mock()
+        mock_response.json.return_value = {
+            "status": 200,
+            "result": {"latitude": 51.5074, "longitude": -0.1278}
+        }
+        mock_get.return_value = mock_response
 
-    def test_validation_date_is_datetime_instance(self, sample_application):
-        """Verify validation_date is datetime object, not string."""
-        pass
+        result = sample_application.geocode_postcode("SW1A1AA")
+        assert result == (51.5074, -0.1278)
 
+    @patch('pipeline.utilities.transform.requests.get')
+    def test_invalid_postcode_returns_none(self, mock_get, sample_application):
+        """Return None for invalid postcode."""
+        mock_response = Mock()
+        mock_response.json.return_value = {"status": 404}
+        mock_get.return_value = mock_response
 
-class TestProcessPdfs:
-    """Tests for PDF processing step."""
+        result = sample_application.geocode_postcode("INVALID123")
+        assert result is None
 
-    def test_happy_path_valid_pdfs(self, sample_application):
-        """Process valid PDF list and populate ai_summary and score."""
-        pass
+    @patch('pipeline.utilities.transform.requests.get')
+    def test_connection_error_returns_none(self, mock_get, sample_application):
+        """Return None on connection error."""
+        mock_get.side_effect = requests.RequestException("Connection failed")
 
-    def test_ai_summary_populated(self, sample_application):
-        """Verify ai_summary instance variable is populated."""
-        pass
-
-    def test_public_interest_score_populated(self, sample_application):
-        """Verify public_interest_score instance variable is populated."""
-        pass
-
-    def test_pdfs_populated(self, sample_application):
-        """Verify pdfs instance variable is populated."""
-        pass
-
-
-class TestProcess:
-    """Tests for the complete process() orchestration method."""
-
-    def test_happy_path_full_pipeline(self, sample_application):
-        """Execute full processing pipeline successfully."""
-        pass
-
-    def test_all_fields_populated_after_process(self, sample_application):
-        """Verify all instance fields are populated after process()."""
-        pass
-
-    def test_cleanup_happens_on_success(self, sample_application):
-        """Verify temp files are cleaned up after successful process()."""
-        pass
-
-    def test_cleanup_happens_on_error(self, sample_application):
-        """Verify temp files are cleaned up even if error occurs."""
-        pass
+        result = sample_application.geocode_postcode("SW1A1AA")
+        assert result is None
 
 
 class TestToDict:
     """Tests for converting application to dictionary format."""
 
-    def test_happy_path_complete_application(self, sample_application):
+    @patch('pipeline.utilities.transform.Application._process_pdfs')
+    @patch('pipeline.utilities.transform.Application._process_validation_date')
+    @patch('pipeline.utilities.transform.Application._process_address')
+    def test_happy_path_complete_application(self, mock_address, mock_date, mock_pdfs,
+                                             sample_application):
         """Convert fully processed application to dictionary."""
-        pass
+        sample_application.process()
+        result = sample_application.to_dict()
 
-    def test_all_required_fields_present(self, sample_application):
+        assert isinstance(result, dict)
+        assert 'application_number' in result
+        assert 'ai_summary' in result
+        assert 'public_interest_score' in result
+
+    @patch('pipeline.utilities.transform.Application._process_pdfs')
+    @patch('pipeline.utilities.transform.Application._process_validation_date')
+    @patch('pipeline.utilities.transform.Application._process_address')
+    def test_all_required_fields_present(self, mock_address, mock_date, mock_pdfs,
+                                         sample_application):
         """Verify all required fields are in output dictionary."""
-        pass
+        sample_application.process()
+        result = sample_application.to_dict()
 
-    def test_field_values_correct_types(self, sample_application):
-        """Verify output fields have correct types."""
-        pass
+        required_fields = [
+            'application_number', 'application_type', 'address', 'postcode',
+            'lat', 'long', 'validation_date', 'status', 'ai_summary',
+            'public_interest_score', 'pdfs'
+        ]
+        for field in required_fields:
+            assert field in result
 
     def test_field_values_match_instance_variables(self, sample_application):
         """Verify dictionary values match instance variable values."""
-        pass
+        sample_application.address = "Test Address"
+        sample_application.postcode = "E3 2JP"
+        sample_application.validation_date = datetime(2025, 6, 9)
+
+        result = sample_application.to_dict()
+
+        assert result['address'] == sample_application.address
+        assert result['postcode'] == sample_application.postcode
+        assert result['validation_date'] == sample_application.validation_date

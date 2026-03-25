@@ -3,5 +3,6 @@ pytest
 requests
 beautifulsoup4
 selenium
-retrying
-
+pymupdf
+python-dotenv
+openai
