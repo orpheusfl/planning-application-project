@@ -31,7 +31,7 @@ resource "aws_iam_role" "c22-planning-ecs-secrets-role" {
 
 resource "aws_iam_role_policy" "c22-planning-ecs-secrets-role-policy" {
   name   = "c22-planning-ecs-secrets-role-policy"
-  role   = aws_iam_role.c22-planning-ecs-secrets-role.id
+  role   = aws_iam_role.c22-planning-ecs-role.id
 
   policy = jsonencode({
     Version = "2012-10-17"
