@@ -2,7 +2,7 @@
 resource "aws_db_subnet_group" "pipeline-rds-subnet-group" {
   name       = "c22-planning-pipeline-db-subnet-group"
   
-  subnet_ids = data.aws_subnets.pipeline-private-subnets.ids
+  subnet_ids = data.aws_subnets.public_subnets.ids
 
   tags = {
     Name = "c22-planning-pipeline-db-subnet-group"
@@ -55,7 +55,7 @@ resource "aws_db_instance" "pipeline-planning-db" {
   db_subnet_group_name   = aws_db_subnet_group.pipeline-rds-subnet-group.name
   vpc_security_group_ids = [aws_security_group.pipeline-rds-sg-v2.id]
   
-  publicly_accessible    = false 
+  publicly_accessible    = true
   skip_final_snapshot    = true  
 }
 
