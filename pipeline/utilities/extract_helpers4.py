@@ -4,7 +4,7 @@ from urllib.parse import urljoin
 import requests
 from typing import List, Dict, Optional
 from bs4 import BeautifulSoup
-from get_urls_for_application import get_summary_url_for_application, get_documents_url_for_application
+from url_transformers import get_summary_url_for_application, get_documents_url_for_application
 
 # --- Global Configurations ---
 BASE_URL = "https://development.towerhamlets.gov.uk/online-applications/"
@@ -119,23 +119,16 @@ def prime_session_state(session: requests.Session) -> bool:
 
 
 # ----------------------------------------------
-# Results Extraction Logic
+# Application Data Extraction Logic
 # ----------------------------------------------
 
-def extract_application_id_and_url(app_html) -> Dict[str, str]:
+def extract_application_id_from_app_html(app_html) -> str:
     """
-    Given a single application HTML element, extract the application ID and URL.
+    Given a single application HTML element, extract the application ID (Ref. No).
     This is a helper function to keep the main extraction logic clean.
     """
     app_id = "N/A"
-    app_url = "N/A"
     
-    # Extract the Application URL
-    link_tag = app_html.find('a')
-    if link_tag and link_tag.get('href'):
-        app_url = urljoin(BASE_URL, link_tag.get('href'))
-
-    # Extract the Application ID (Ref. No)
     meta_tag = app_html.find('p', class_='metaInfo')
     if meta_tag:
         meta_parts = meta_tag.text.split('|')
@@ -145,12 +138,35 @@ def extract_application_id_and_url(app_html) -> Dict[str, str]:
                 app_id = clean_part.replace("Ref. No:", "").strip()
                 break
 
+    return app_id
+
+def extract_application_url_from_app_html(app_html) -> str:
+    """
+    Given a single application HTML element, extract the application URL.
+    This is a helper function to keep the main extraction logic clean.
+    """
+    app_url = "N/A"
+    
+    link_tag = app_html.find('a')
+    if link_tag and link_tag.get('href'):
+        app_url = urljoin(BASE_URL, link_tag.get('href'))
+
+    return app_url
+
+def extract_id_and_url_from_application_result(app_html) -> Dict[str, str]:
+    """
+    Given a single application HTML element, extract the application ID and URL.
+    This is a helper function to keep the main extraction logic clean.
+    """
+    app_id = extract_application_id_from_app_html(app_html)
+    app_url = extract_application_url_from_app_html(app_html)
+
     return {
         "application_id": app_id,
         "url": app_url
     }
 
-def extract_applications_from_page(html_content: str) -> List[Dict[str, str]]:
+def extract_application_results_from_results_page(html_content: str) -> List[Dict[str, str]]:
     """
     Parses the HTML for a results page, and for each application found, extracts the application ID and URL.
     Returns a list of dictionaries containing the extracted data for each application.
@@ -162,7 +178,7 @@ def extract_applications_from_page(html_content: str) -> List[Dict[str, str]]:
     logger.info(f"Found {len(apps)} search result elements on page")
     
     for app in apps:
-        extracted_data = extract_application_id_and_url(app)
+        extracted_data = extract_id_and_url_from_application_result(app)
         page_data.append(extracted_data)
         logger.debug(f"Extracted: {extracted_data['application_id']} - {extracted_data['url']}")
         
@@ -187,6 +203,10 @@ def get_current_applications(session) -> List[Dict[str, str]]:
     page = 1
 
     while True:
+        if page == 2:
+            logger.info("Reached page 5, stopping pagination to avoid potential issues.")
+            break
+
         logger.info(f"Fetching Page {page}...")
         url = f"{BASE_URL}pagedSearchResults.do?action=page&searchCriteria.page={page}"
         response = session.get(url)
@@ -198,7 +218,7 @@ def get_current_applications(session) -> List[Dict[str, str]]:
                 break
             continue  # Retry the same page after re-priming
 
-        extracted_apps = extract_applications_from_page(response.text)
+        extracted_apps = extract_application_results_from_results_page(response.text)
         
         if not extracted_apps:
             logger.info(f"No applications found on page {page}. Ending pagination.")
@@ -233,76 +253,118 @@ def extract_application_details_from_summary_page(html_content: str) -> Dict[str
 def extract_pdfs_from_documents_page(html_content: str) -> List[Dict[str, str]]:
     """
     Parses the HTML of an application's documents page to extract any associated PDFs.
-    This function takes the raw HTML content of the documents page and returns a list of dictionaries, each containing the PDF URL and its document type.
-    The returned list will have the following structure:
-    [
-        {
-            "pdf_url": str,
-            "document_type": str
-        },
-        ...
-    ]
+    This function takes the raw HTML content of the documents page and returns a list of dictionaries, 
+    each containing the PDF URL and its document type.
     """
+    pdf_documents: List[Dict[str, str]] = []
+    soup = BeautifulSoup(html_content, 'html.parser')
+    
+    # Locate the main documents table
+    documents_table = soup.find('table', id='Documents')
+    
+    if not documents_table:
+        logger.debug("No documents table found on this page.")
+        return pdf_documents
+        
+    # Iterate through each row, skipping the table header (<th>) rows automatically 
+    # since we explicitly look for table data (<td>) cells.
+    rows = documents_table.find_all('tr')
+    
+    for row in rows:
+        cols = row.find_all('td')
+        
+        # Ensure the row has the expected number of columns to avoid index errors
+        # Columns: [0] Checkbox, [1] Date, [2] Type, [3] Drawing No, [4] Description, [5] View Link
+        if len(cols) >= 6:
+            document_type = cols[2].get_text(strip=True)
+            
+            # The PDF download/view link is located in an anchor tag in the final column
+            view_link_tag = cols[5].find('a')
+            
+            if view_link_tag and view_link_tag.get('href'):
+                raw_url = view_link_tag.get('href')
+                
+                # Convert the relative href into a fully qualified URL using the global BASE_URL
+                pdf_url = urljoin(BASE_URL, raw_url)
+                
+                pdf_documents.append({
+                    "pdf_url": pdf_url,
+                    "document_type": document_type
+                })
+                
+    logger.debug(f"Successfully extracted {len(pdf_documents)} PDFs.")
+    return pdf_documents
 
-def scrape_data_at_application_pages(session, applications: List[Dict[str, str]]) -> list[dict[str, any]]:
-    """
-    For each application in the list, scrapes the data from its details page and enriches the application data with the extracted fields.
-    This function takes a list of applications with their URL, visits each URL, and extracts the desired data fields, returning a list of dictionaries with the complete data for each application.
-    This function will return a list of dictionaries with the following structure:
-    [
-        {
-            "application_number": str,
-            "source_url": str,
-            "address": str,
-            "postcode": str,
-            "description": str,
-            "status": str,
-            "validation_date": str,
-            "pdfs": list[{
-                "pdf_url": str,
-                "document_type": str
-            }]
-        },
-        ...
-    ]
-
-    """
-    enriched_applications = []
-
-    for app in applications:
-        # Transform the urls to go to the correct tabs for documents and summary
-        document_url = get_documents_url_for_application(app)
-        summary_url = get_summary_url_for_application(app)
-
-        # Scrape the summary page for the main application details
-        summary_response = session.get(summary_url)
-        summary_data = extract_application_details_from_summary_page(summary_response.text)
-
-        # Scrape the documents page for any associated PDFs
-        document_response = session.get(document_url)
-        pdf_data = extract_pdfs_from_documents_page(document_response.text)
-
-
-
-def scrape_data_at_application_page(session, application: Dict[str, str]) -> Optional[Dict[str, any]]:
+def scrape_data_at_application_page(session: requests.Session, application: Dict[str, str]) -> Optional[Dict[str, any]]:
     """
     Navigates to a single application's details page and scrapes the required data fields.
     This function takes a single application dictionary with its URL, visits the URL, and extracts the desired data fields, returning a dictionary with the complete data for that application.
-    The returned dictionary will have the following structure:
-    {
-        "application_number": str,
-        "source_url": str,
-        "address": str,
-        "postcode": str,
-        "description": str,
-        "status": str,
-        "validation_date": str,
-        "pdfs": list[{
-            "pdf_url": str,
-            "document_type": str
-        }]
-    }
     """
+    app_id = application.get('application_id', 'Unknown ID')
+    logger.info(f"Enriching data for application: {app_id}")
+
+    try:
+        # Generate target URLs for this specific application
+        document_url = get_documents_url_for_application(application)
+        summary_url = get_summary_url_for_application(application)
+
+        # Scrape the summary page for the main application details
+        logger.debug(f"[{app_id}] Fetching summary page...")
+        summary_response = session.get(summary_url)
+        summary_response.raise_for_status() # Raise an exception for bad HTTP status codes
+        summary_data = extract_application_details_from_summary_page(summary_response.text)
+        logger.debug(f"[{app_id}] Successfully parsed summary details.")
+
+        # Scrape the documents page for any associated PDFs
+        logger.debug(f"[{app_id}] Fetching documents page...")
+        document_response = session.get(document_url)
+        document_response.raise_for_status()
+        pdf_data = extract_pdfs_from_documents_page(document_response.text)
+        logger.debug(f"[{app_id}] Extracted {len(pdf_data)} PDFs.")
+
+        # Combine the summary data and PDF data into a single dictionary
+        enriched_app = {
+            "application_number": app_id,
+            "source_url": application.get('url', ''),
+            "address": summary_data.get("address", ""),
+            "postcode": "",  # Placeholder: Implement extraction in summary parser later
+            "description": summary_data.get("description", ""),
+            "status": summary_data.get("status", ""),
+            "validation_date": summary_data.get("validation_date", ""),
+            "pdfs": pdf_data
+        }
+        
+        logger.info(f"Successfully enriched application: {app_id}")
+        return enriched_app
+
+    except requests.exceptions.RequestException as e:
+        logger.error(f"[{app_id}] Network error while scraping application: {e}")
+        return None
+    except Exception as e:
+        logger.error(f"[{app_id}] Unexpected error while scraping application: {e}")
+        return None
+
+
+def scrape_data_at_application_pages(session: requests.Session, applications: List[Dict[str, str]]) -> List[Dict[str, any]]:
+    """
+    For each application in the list, scrapes the data from its details page and enriches the application data with the extracted fields.
+    """
+    enriched_applications = []
+    total_apps = len(applications)
+    
+    logger.info(f"Starting detailed scrape for {total_apps} applications...")
+
+    for index, app in enumerate(applications, start=1):
+        logger.debug(f"Processing {index}/{total_apps}...")
+        
+        enriched_data = scrape_data_at_application_page(session, app)
+        
+        # Only append if the scrape was successful (didn't return None due to an error)
+        if enriched_data:
+            enriched_applications.append(enriched_data)
+
+    logger.info(f"Enrichment complete. Successfully processed {len(enriched_applications)} out of {total_apps} applications.")
+    return enriched_applications
    
 
 # ----------------------------------------------
@@ -321,6 +383,9 @@ def filter_new_applications(scraped_apps: List[Dict[str, str]], existing_app_ids
 
 def get_application_ids_from_database(conn) -> List[str]:
     """ Gets a list of application IDs that are already in the database to avoid duplicates. """
+    if conn is None:
+        return []
+    
     with conn.cursor() as cursor:
         cursor.execute("SELECT application_id FROM applications")
         existing_ids = [row[0] for row in cursor.fetchall()]
@@ -340,8 +405,12 @@ def run_scraper() -> List[Dict[str, str]]:
     # Gets the current applications by navigating through the search results pages
     current_applications = get_current_applications(session)
 
+    print(f"Total applications scraped: {len(current_applications)}")
+
     existing_app_ids = get_application_ids_from_database(conn=None)  
     filtered_applications = filter_new_applications(current_applications, existing_app_ids)
+
+    print(f"New applications to enrich: {len(filtered_applications)}")
 
     applications_enriched = scrape_data_at_application_pages(session, filtered_applications)  
 
