@@ -33,6 +33,13 @@ def get_documents_url_for_application(app_data: dict) -> str:
     return _modify_app_url(app_data['url'], 'documents')
 
 
+def get_further_details_url_for_application(app_data: dict) -> str:
+    """
+    Generates the Further Details tab URL from the base application URL.
+    """
+    return _modify_app_url(app_data['url'], 'details')
+
+
 if __name__ == "__main__":
     # 1. Get the data using your existing logic
     apps = run_scraper()
