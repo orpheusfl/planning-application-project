@@ -6,6 +6,7 @@ parsing (summary + documents), and orchestration of the full scrape pipeline.
 """
 
 import logging
+import pprint
 import urllib3
 from urllib.parse import urljoin, urlparse, parse_qs, urlencode, urlunparse
 
@@ -156,6 +157,7 @@ def get_summary_url(app_data: Dict[str, str]) -> str:
 def get_documents_url(app_data: Dict[str, str]) -> str:
     """Generates the Documents tab URL from an application's base URL."""
     return _modify_app_url(app_data["url"], "documents")
+
 
 
 # ----------------------------------------------
@@ -316,7 +318,7 @@ def fetch_page(session: requests.Session, url: str) -> Optional[str]:
 # ----------------------------------------------
 
 
-MAX_PAGES = 2  # Safety cap to limit pagination during development
+MAX_PAGES = 1  # Safety cap to limit pagination during development
 
 
 def get_current_applications(session: requests.Session) -> List[Dict[str, str]]:
@@ -387,7 +389,6 @@ def enrich_application(session: requests.Session, application: Dict[str, str]) -
         "application_number": app_id,
         "source_url": application.get("url", ""),
         "address": summary_data.get("address", ""),
-        "postcode": "",  # Placeholder: implement extraction in summary parser later
         "description": summary_data.get("description", ""),
         "status": summary_data.get("status", ""),
         "validation_date": summary_data.get("validation_date", ""),
@@ -477,4 +478,5 @@ if __name__ == "__main__":
     results = run_scraper()
     sample = results[:5]
     logger.info(f"Sample Extracted Applications: {sample}")
+    pprint.pprint(sample)
     logger.info(f"Scrape Complete! Total applications found: {len(results)}")
