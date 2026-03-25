@@ -11,7 +11,7 @@ CREATE TABLE council (
 
 CREATE TABLE status_type (
     status_type_id BIGINT PRIMARY KEY,
-    status VARCHAR(100) NOT NULL
+    status_type VARCHAR(100) NOT NULL
 );
 
 CREATE TABLE application_type (
@@ -42,7 +42,7 @@ CREATE TABLE subscribers (
 -- ==========================================
 
 CREATE TABLE application (
-    application_id BIGINT PRIMARY KEY,
+    application_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     council_id BIGINT NOT NULL,
     status_type_id BIGINT NOT NULL,
     application_type_id BIGINT NOT NULL,
@@ -72,7 +72,7 @@ CREATE TABLE application (
 );
 
 CREATE TABLE document (
-    document_id BIGINT PRIMARY KEY,
+    document_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     application_id BIGINT NOT NULL,
     document_type_id BIGINT NOT NULL,
     s3_object_key VARCHAR(1024) NOT NULL,
