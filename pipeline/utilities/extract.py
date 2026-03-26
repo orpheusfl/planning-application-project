@@ -13,17 +13,19 @@ from urllib.parse import urljoin, urlparse, parse_qs, urlencode, urlunparse
 import requests
 from requests.exceptions import RequestException
 from bs4 import BeautifulSoup
-from bs4.element import Tag  # REFACTOR: Imported Tag for proper typing of parsed HTML elements
+# REFACTOR: Imported Tag for proper typing of parsed HTML elements
+from bs4.element import Tag
 from typing import Any, Dict, List, Optional, Set
-
-
 import re
 
+from load import get_rds_connection
 
 
 # --- Configuration ---
 
 BASE_URL = "https://development.towerhamlets.gov.uk/online-applications/"
+
+# Mappings for extracting the relevant fields from the Summary and Further Details tables
 
 SUMMARY_FIELD_MAPPING: Dict[str, str] = {
     "Application Validated": "validation_date",
@@ -34,7 +36,7 @@ SUMMARY_FIELD_MAPPING: Dict[str, str] = {
 
 FURTHER_DETAILS_FIELD_MAPPING: Dict[str, str] = {
     "Application Type": "app_type",
-}       
+}
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -53,18 +55,22 @@ logger = logging.getLogger(__name__)
 
 def create_scraper_session() -> requests.Session:
     """Initialises a persistent session with standard browser headers and disabled SSL."""
-    session = requests.Session()
-    session.verify = False
+    try:
+        session = requests.Session()
+        session.verify = False
 
-    session.headers.update({
-        "User-Agent": (
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:148.0) "
-            "Gecko/20100101 Firefox/148.0"
-        ),
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Connection": "keep-alive",
-    })
-    return session
+        session.headers.update({
+            "User-Agent": (
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:148.0) "
+                "Gecko/20100101 Firefox/148.0"
+            ),
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Connection": "keep-alive",
+        })
+        return session
+    except Exception as e:
+        logger.error(f"Error creating session: {e}")
+        raise
 
 
 def acquire_session_cookie(session: requests.Session, url: str) -> bool:
@@ -168,9 +174,7 @@ def get_tab_url(app_data: Dict[str, str], tab_name: str) -> str:
     """
     Generates the URL for a specific tab (e.g., 'summary', 'documents', 'details')
     from an application's base URL.
-    
-    # REFACTOR: Consolidated get_summary_url, get_documents_url, etc. 
-    # into a single DRY function.
+
     """
     return _modify_app_url(app_data["url"], tab_name)
 
@@ -181,11 +185,16 @@ def get_tab_url(app_data: Dict[str, str], tab_name: str) -> str:
 
 
 def extract_application_id(app_html: Tag) -> str:
-    """Extracts the application reference number from a single search result element."""
+    """Extracts the application reference number from a single search result element.
+    Meta tag example: <p class="metaInfo">Ref. No: PA/22/01234 | Validated: 01/01/2022</p>
+    """
+    # Finds the tag with the class 'metaInfo'
     meta_tag = app_html.find("p", class_="metaInfo")
+
     if not meta_tag:
         return "N/A"
 
+    # Extracts the text content and splits it by the '|' character to separate different pieces of metadata
     meta_parts = meta_tag.text.split("|")
     for part in meta_parts:
         clean_part = " ".join(part.split())
@@ -213,18 +222,19 @@ def parse_search_result(app_html: Tag) -> Dict[str, str]:
 
 def parse_results_page(html_content: str) -> List[Dict[str, str]]:
     """
-    Parses a full search results page and returns a list of application stubs.
+    Parses a full search results page and returns a list of application dictionaries.
     """
     soup = BeautifulSoup(html_content, "html.parser")
     apps = soup.find_all("li", class_="searchresult")
 
     logger.info(f"Found {len(apps)} search result elements on page.")
 
-    # REFACTOR: Used list comprehension for cleaner extraction
+    # For each search result element, extract the application ID and URL using the helper functions
     page_data = [parse_search_result(app) for app in apps]
-    
+
     for result in page_data:
-        logger.debug(f"Extracted: {result['application_id']} - {result['url']}")
+        logger.debug(
+            f"Extracted: {result['application_id']} - {result['url']}")
 
     return page_data
 
@@ -272,7 +282,8 @@ def parse_summary_page(html_content: str) -> Dict[str, str]:
 def parse_further_details_page(html_content: str) -> str:
     """Parses the Further Details Tab specifically to get the Application Type."""
     soup = BeautifulSoup(html_content, 'html.parser')
-    result = extract_table_metadata(soup, "applicationDetails", FURTHER_DETAILS_FIELD_MAPPING)
+    result = extract_table_metadata(
+        soup, "applicationDetails", FURTHER_DETAILS_FIELD_MAPPING)
     return result.get("app_type", "N/A")
 
 
@@ -289,19 +300,20 @@ def parse_documents_page(html_content: str, current_page_url: str) -> List[Dict[
         return []
 
     pdf_documents: List[Dict[str, str]] = []
-    
+
     # 1. Dynamically find column indices from headers (Accounts for guest vs logged-in views)
-    headers = [th.get_text(strip=True).lower() for th in documents_table.find_all("th")]
-    
+    headers = [th.get_text(strip=True).lower()
+               for th in documents_table.find_all("th")]
+
     try:
         type_idx = headers.index("document type")
     except ValueError:
         type_idx = 1  # Fallback to standard Idox index
-        
+
     try:
         view_idx = headers.index("view")
     except ValueError:
-        view_idx = -1 # Fallback to the last column in the table
+        view_idx = -1  # Fallback to the last column in the table
 
     rows = documents_table.find_all("tr")
 
@@ -319,7 +331,7 @@ def parse_documents_page(html_content: str, current_page_url: str) -> List[Dict[
         view_link_tag = None
         if len(cols) > view_idx:
             view_link_tag = cols[view_idx].find("a", href=True)
-            
+
         # Fallback: Just grab the last link in the row if the layout is entirely unexpected
         if not view_link_tag:
             all_links = row.find_all("a", href=True)
@@ -328,15 +340,16 @@ def parse_documents_page(html_content: str, current_page_url: str) -> List[Dict[
 
         if not view_link_tag or not view_link_tag.get("href"):
             continue
-            
+
         raw_href = view_link_tag.get("href")
-        
+
         # 4. Strip ephemeral session tokens that break links after the scraper finishes
-        clean_href = re.sub(r";jsessionid=[a-zA-Z0-9]+", "", raw_href, flags=re.IGNORECASE)
+        clean_href = re.sub(
+            r";jsessionid=[a-zA-Z0-9]+", "", raw_href, flags=re.IGNORECASE)
 
         # 5. Join using the actual page URL, not the static BASE_URL
         pdf_url = urljoin(current_page_url, clean_href)
-        
+
         pdf_documents.append({
             "pdf_url": pdf_url,
             "document_type": document_type,
@@ -358,7 +371,7 @@ def fetch_page(session: requests.Session, url: str) -> Optional[str]:
     """
     try:
         response = session.get(url, timeout=10)
-        response.raise_for_status() # REFACTOR: Automatically catch 4xx/5xx errors
+        response.raise_for_status()  # REFACTOR: Automatically catch 4xx/5xx errors
         return response.text
     except RequestException as e:
         logger.error(f"Request failed for URL {url}: {e}")
@@ -401,7 +414,8 @@ def get_current_applications(session: requests.Session) -> List[Dict[str, str]]:
         extracted_apps = parse_results_page(html_content)
 
         if not extracted_apps:
-            logger.info(f"No applications found on page {page}. Ending pagination.")
+            logger.info(
+                f"No applications found on page {page}. Ending pagination.")
             break
 
         applications.extend(extracted_apps)
@@ -431,18 +445,20 @@ def enrich_application(session: requests.Session, application: Dict[str, str]) -
     details_url = get_tab_url(application, "details")
     details_html = fetch_page(session, details_url)
     if details_html:
-        summary_data["application_type"] = parse_further_details_page(details_html)
+        summary_data["application_type"] = parse_further_details_page(
+            details_html)
     else:
-        logger.warning(f"[{app_id}] Failed to fetch details page. Defaulting App Type.")
+        logger.warning(
+            f"[{app_id}] Failed to fetch details page. Defaulting App Type.")
         summary_data["application_type"] = "N/A"
 
-    # 3. Fetch and parse the Documents tab 
+    # 3. Fetch and parse the Documents tab
     documents_url = get_tab_url(application, "documents")
     documents_html = fetch_page(session, documents_url)
-    
+
     if documents_html:
-        # REFACTOR: Pass the documents_url into the parser to construct accurate absolute links
-        pdf_data = parse_documents_page(documents_html, current_page_url=documents_url)
+        pdf_data = parse_documents_page(
+            documents_html, current_page_url=documents_url)
     else:
         logger.warning(f"[{app_id}] Failed to fetch documents page.")
         pdf_data = []
@@ -468,7 +484,7 @@ def enrich_applications(session: requests.Session, applications: List[Dict[str, 
     """Iterates through application stubs and enriches each one."""
     total = len(applications)
     logger.info(f"Starting detailed scrape for {total} applications...")
-    
+
     enriched: List[Dict[str, Any]] = []
     for index, app in enumerate(applications, start=1):
         logger.debug(f"Processing {index}/{total}...")
@@ -499,7 +515,8 @@ def get_existing_application_ids(conn: Any) -> Set[str]:
 def filter_new_applications(scraped_apps: List[Dict[str, str]], existing_ids: Set[str]) -> List[Dict[str, str]]:
     """Returns only the applications whose IDs are not already in the database."""
     # REFACTOR: Switched existing_ids to a Set and used a list comprehension
-    new_apps = [app for app in scraped_apps if app["application_id"] not in existing_ids]
+    new_apps = [app for app in scraped_apps if app["application_id"]
+                not in existing_ids]
 
     logger.info(f"Filtered {len(new_apps)} new applications to process.")
     return new_apps
@@ -510,7 +527,7 @@ def filter_new_applications(scraped_apps: List[Dict[str, str]], existing_ids: Se
 # ----------------------------------------------
 
 
-def run_scraper() -> List[Dict[str, Any]]:
+def run_scraper(conn: Any) -> List[Dict[str, Any]]:
     """
     Main entry point. Sets up a session, scrapes current applications,
     filters out duplicates, and enriches the new ones with detail data.
@@ -520,17 +537,9 @@ def run_scraper() -> List[Dict[str, Any]]:
     current_applications = get_current_applications(session)
     logger.info(f"Total applications scraped: {len(current_applications)}")
 
-    existing_ids = get_existing_application_ids(conn=None)
-    new_applications = filter_new_applications(current_applications, existing_ids)
+    existing_ids = get_existing_application_ids(conn)
+    new_applications = filter_new_applications(
+        current_applications, existing_ids)
     logger.info(f"New applications to enrich: {len(new_applications)}")
 
     return enrich_applications(session, new_applications)
-
-
-if __name__ == "__main__":
-    logger.info("Starting Tower Hamlets Scraper...")
-    results = run_scraper()
-    sample = results[:5]
-    logger.info(f"Sample Extracted Applications: {sample}")
-    pprint.pprint(sample)
-    logger.info(f"Scrape Complete! Total applications found: {len(results)}")
