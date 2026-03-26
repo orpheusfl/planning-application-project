@@ -181,7 +181,7 @@ def load_application_to_rds(conn, table_name: str, application_data: dict,
 
 
 def load_pdf_to_s3(s3_client, bucket_name: str, file_path: str, s3_key: str):
-    """ Uploads a PDF file to the specified S3 bucket. 
+    """ Uploads a PDF file to the specified S3 bucket.
     Takes the local file path and the desired S3 key as input. """
     try:
         s3_client.upload_file(file_path, bucket_name, s3_key)
@@ -195,7 +195,7 @@ def load_pdf_to_s3(s3_client, bucket_name: str, file_path: str, s3_key: str):
 
 def load_list_of_pdfs_to_s3(s3_client, bucket_name: str, file_paths: list,
                             council_name: str, application_number: str):
-    """ Uploads a list of PDF files to the specified S3 bucket. 
+    """ Uploads a list of PDF files to the specified S3 bucket.
     Takes a list of local file paths and S3 key prefix as input. """
     try:
         for file_path in file_paths:
