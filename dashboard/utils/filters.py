@@ -24,19 +24,32 @@ def by_min_score(df: pd.DataFrame, min_score: int) -> pd.DataFrame:
     return df[df["public_interest_score"] >= min_score]
 
 
+import numpy as np
+
+EARTH_RADIUS_MILES = 3959
+
+
 def by_radius(
     df: pd.DataFrame, lat: float, lon: float, radius_miles: float
 ) -> pd.DataFrame:
-    """Keep applications within *radius_miles* of (*lat*, *lon*)."""
-    distances = df.apply(
-        lambda row: haversine_miles(lat, lon, row["lat"], row["long"]),
-        axis=1,
-    )
+    """Filter applications within a radius of a given point.
+
+    Uses vectorised NumPy haversine — significantly faster than
+    row-by-row df.apply() for large DataFrames.
+    """
+    lat1 = np.radians(lat)
+    lat2 = np.radians(df["lat"].values)
+    dlat = np.radians(df["lat"].values - lat)
+    dlon = np.radians(df["long"].values - lon)
+
+    a = np.sin(dlat / 2) ** 2 + np.cos(lat1) * np.cos(lat2) * np.sin(dlon / 2) ** 2
+    distances = 2 * EARTH_RADIUS_MILES * np.arcsin(np.sqrt(a))
+
     return df[distances <= radius_miles]
 
 
 def by_application_number(df: pd.DataFrame, query: str) -> pd.DataFrame:
     """Case-insensitive partial match on application number."""
     return df[
-        df["application_number"].str.contains(query, case=False, na=False)
+        df["application_number"].str.contains(query, case=False, na=False, regex=False)
     ]

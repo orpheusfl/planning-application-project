@@ -58,6 +58,16 @@ def marker_color(score) -> list[int]:
 
 
 # ---------------------------------------------------------------------------
+# Unsubscribe helpers
+# ---------------------------------------------------------------------------
+def _toggle_all_unsubscribe_checkboxes(subscriber_ids: list[int]) -> None:
+    """Sync individual unsubscribe checkboxes with the 'Select all' state."""
+    val = st.session_state["unsub_select_all"]
+    for sub_id in subscriber_ids:
+        st.session_state[f"unsub_{sub_id}"] = val
+
+
+# ---------------------------------------------------------------------------
 # Subscribe dialog
 # ---------------------------------------------------------------------------
 @st.dialog("Subscribe to weekly updates")
@@ -159,13 +169,13 @@ def _show_unsubscribe_dialog() -> None:
 
     st.markdown(f"**{len(subs)} active subscription(s):**")
 
-    def _on_select_all_change():
-        val = st.session_state["unsub_select_all"]
-        for sub in subs:
-            st.session_state[f"unsub_{sub['subscriber_id']}"] = val
+    subscriber_ids = [sub["subscriber_id"] for sub in subs]
 
-    select_all = st.checkbox(
-        "Select all", key="unsub_select_all", on_change=_on_select_all_change
+    st.checkbox(
+        "Select all",
+        key="unsub_select_all",
+        on_change=_toggle_all_unsubscribe_checkboxes,
+        args=(subscriber_ids,),
     )
 
     selected_ids: list[int] = []
@@ -380,7 +390,6 @@ def get_selected_from_map(event, df: pd.DataFrame) -> pd.Series | None:
     The selection is persisted in ``st.session_state`` so it survives the
     transient nature of pydeck events (they only fire on the click rerun).
     """
-    # Ignore stale pydeck events when sidebar filters just changed
     filters_changed = st.session_state.get("_filters_changed", False)
 
     if not filters_changed and event and event.selection:
@@ -400,7 +409,6 @@ def get_selected_from_map(event, df: pd.DataFrame) -> pd.Series | None:
         match = df[df["application_id"] == app_id]
         if not match.empty:
             return match.iloc[0]
-        # Application no longer in the filtered set — clear stale state
         del st.session_state["map_selected_app_id"]
 
     return None
@@ -494,9 +502,6 @@ def _render_documents(documents: pd.DataFrame) -> None:
             f"""<div class="doc-card">
                 <span class="doc-type">{doc_type}</span><br/>
                 <strong>{doc["document_name"]}</strong><br/>
-                <a href="{doc["source_url"]}" target="_blank">
-                    View original ↗</a>
-                &nbsp;·&nbsp;
                 <code>{doc["s3_uri"]}</code>
             </div>""",
             unsafe_allow_html=True,
