@@ -1,23 +1,25 @@
 """Utilities for transforming planning application data."""
 
+import json
 import logging
-from selenium import webdriver
+import os
+import re
 import shutil
 import tempfile
-from datetime import datetime
 import time
+from datetime import datetime
 from pathlib import Path
-import requests
+
 import fitz  # PyMuPDF
-from dotenv import load_dotenv
-import os
 import openai
-import json
-import re
+import requests
 from dateutil import parser as date_parser
+from dotenv import load_dotenv
+from selenium import webdriver
 
 
 logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
 
 load_dotenv()  # Load environment variables from .env file
 
@@ -37,7 +39,8 @@ class Application:
                  validation_date: str,
                  status: str,
                  pdfs: list[dict],
-                 application_url: str | None = None) -> None:
+                 application_url: str | None = None,
+                 document_page_url: str | None = None) -> None:
         """Initialize with raw input data. Call process() to transform and enrich.
 
         Args:
@@ -48,7 +51,9 @@ class Application:
             validation_date: Date of validation as string (e.g., "Fri 20 Mar 2026")
             status: Current status of the application
             pdfs: List of dicts with 'pdf_url' and 'document_type' keys
-            application_url: Optional URL to the application details page for establishing session context
+            application_url: Optional URL to the application details page for 
+            establishing session context
+            document_page_url: Optional URL to the document page for the application
         """
         self.application_number = application_number
         self.application_type = application_type
@@ -60,6 +65,7 @@ class Application:
         self.status = status
         self.ai_summary: str | None = None
         self.application_url = application_url
+        self.document_page_url = document_page_url
         self.public_interest_score: int | None = None
         self.pdfs: list[dict] | None = None
 
@@ -75,7 +81,7 @@ class Application:
     def process(self) -> None:
         """Transform and enrich raw input data. Call this after __init__ to populate all fields."""
         logger.info(
-            f"Starting process pipeline for application {self.application_number}")
+            "Starting process pipeline for application %s", self.application_number)
         try:
             logger.info("Processing address...")
             self._process_address()
@@ -85,7 +91,7 @@ class Application:
             self._process_pdfs()
             logger.info("Process pipeline completed successfully")
         except Exception as e:
-            logger.error(f"Error during process pipeline: {e}", exc_info=True)
+            logger.error("Error during process pipeline: %s", e, exc_info=True)
             raise
         finally:
             self._cleanup_temp_files()
@@ -107,7 +113,7 @@ class Application:
                 self.lat = coordinates[0]
                 self.long = coordinates[1]
             else:
-                logger.warning(f"Could not geocode postcode {self.postcode}")
+                logger.warning("Could not geocode postcode %s", self.postcode)
                 self.lat = None
                 self.long = None
 
@@ -141,14 +147,14 @@ class Application:
         driver = webdriver.Chrome()
         try:
             # Navigate to application page to authenticate
-            url = self.application_url or 'https://development.towerhamlets.gov.uk/'
+            url = self.document_page_url or 'https://development.towerhamlets.gov.uk/'
             driver.get(url)
             time.sleep(5)  # Wait for cookies to be set
             logger.info("Authenticated session established with browser")
 
             # Extract cookies from the active session
             cookies = driver.get_cookies()
-            logger.info(f"Retrieved {len(cookies)} cookies from Selenium")
+            logger.info("Retrieved %s cookies from Selenium", len(cookies))
 
             # Create a requests session with the active cookies
             session = requests.Session()
@@ -183,17 +189,17 @@ class Application:
         Returns:
             List of dicts with 'document_type' and 'pdf_data' (path) keys
         """
-        logger.info(f"Starting PDF extraction for {len(pdfs)} PDFs")
+        logger.info("Starting PDF extraction for %s PDFs", len(pdfs))
         stored_pdfs = []
 
         for idx, pdf in enumerate(pdfs, 1):
             logger.info(
-                f"Processing PDF {idx}/{len(pdfs)}: {pdf['document_type']}")
+                "Processing PDF %s/%s: %s", idx, len(pdfs), pdf['document_type'])
             try:
                 pdf_path = self._download_pdf(session, pdf['pdf_url'])
                 if pdf_path is None:
                     logger.info(
-                        f"Skipping {pdf['document_type']} - PDF not available")
+                        "Skipping %s - PDF not available", pdf['document_type'])
                     continue
 
                 stored_pdfs.append({
@@ -202,10 +208,10 @@ class Application:
                 })
             except Exception as e:
                 logger.error(
-                    f"Failed to extract PDF {idx}: {e}", exc_info=True)
+                    "Failed to extract PDF %s: %s", idx, e, exc_info=True)
                 raise
 
-        logger.info(f"All {len(stored_pdfs)} PDFs extracted successfully")
+        logger.info("All %s PDFs extracted successfully", len(stored_pdfs))
         return stored_pdfs
 
     def _download_pdf(self, session: requests.Session, url: str) -> Path | None:
@@ -218,7 +224,7 @@ class Application:
         Returns:
             Path to the downloaded PDF file, or None if unavailable
         """
-        logger.info(f"Downloading PDF from: {url}")
+        logger.info("Downloading PDF from: %s", url)
         try:
             response = session.get(url, stream=True, verify=False)
             response.raise_for_status()
@@ -233,20 +239,20 @@ class Application:
                     bytes_downloaded += len(chunk)
 
             logger.info(
-                f"PDF downloaded successfully ({bytes_downloaded} bytes) to {pdf_path}")
+                "PDF downloaded successfully (%s bytes) to %s", bytes_downloaded, pdf_path)
             return pdf_path
         except requests.exceptions.HTTPError as e:
             if e.response.status_code == 404:
-                logger.warning(f"PDF not found (404): {url}")
+                logger.warning("PDF not found (404): %s", url)
                 return None
-            logger.error(f"HTTP error downloading PDF: {e}", exc_info=True)
+            logger.error("HTTP error downloading PDF: %s", e, exc_info=True)
             raise
         except requests.exceptions.RequestException as e:
             logger.error(
-                f"HTTP request error downloading PDF: {e}", exc_info=True)
+                "HTTP request error downloading PDF: %s", e, exc_info=True)
             raise
         except Exception as e:
-            logger.error(f"Error downloading PDF: {e}", exc_info=True)
+            logger.error("Error downloading PDF: %s", e, exc_info=True)
             raise
 
     def extract_text_from_pdf(self, pdf_path: Path) -> str:
@@ -256,17 +262,18 @@ class Application:
             pdf_path: Path to the PDF file
 
         Returns:
-            Extracted text content
+            Extracted text content with page numbers for reference (e.g., "Page 1: ... Page 2: ...")
         """
 
         try:
             doc = fitz.open(pdf_path)
             text = ""
-            for page in doc:
-                text += page.get_text()
+            for page_number, page in enumerate(doc, start=1):
+                text += f"Page {page_number}:\n{page.get_text()}\n"
             return text
         except Exception as e:
-            logger.error(f"Error extracting text from PDF: {e}", exc_info=True)
+            logger.error("Error extracting text from PDF: %s",
+                         e, exc_info=True)
             raise
 
     def clean_pdf_text(self, text: str) -> str:
@@ -301,7 +308,10 @@ class Application:
         )
 
         prompt = f"""Analyze this planning application and return a JSON response with two fields:
-                    1. "summary": A 2-3 sentence summary highlighting key details residents need to know (housing units, density, public amenities, traffic impact, affordable housing percentage, environmental concerns)
+                    1. "summary": A 2-3 sentence summary highlighting key details residents need to 
+                    know (housing units, density, public amenities, traffic impact, affordable 
+                    housing percentage, environmental concerns). Do inline referencing to the exact PDF document
+                    sections where you found key information (e.g., "According to the Decision Notice, page 3...").
                     2. "public_interest_score": An integer from 1-10 assessing public interest level
 
                     Respond ONLY with valid JSON, no additional text.
@@ -312,7 +322,13 @@ class Application:
                     Extracted PDF Content:
                     {formatted_pdf_text}
 
-                    Focus the summary on: proposed uses, number of units/buildings, key impacts on the neighborhood, affordable housing provisions, and any notable amenities or concerns.
+                    Focus the summary on: proposed uses, number of units/buildings, 
+                    key impacts on the neighborhood, affordable housing provisions, 
+                    and any notable amenities or concerns. If there is no pdf content, 
+                    summarise based on the original description.
+
+                    Use UK English and be concise, but using full sentences. Avoid generic statements 
+                    and focus on specific details that would be relevant to local residents.
 
                     Return format:
                     {{"summary": "...", "public_interest_score": <number>}}"""
@@ -330,7 +346,7 @@ class Application:
             return client
         except Exception as e:
             logger.error(
-                f"Error initializing OpenAI client: {e}", exc_info=True)
+                "Error initializing OpenAI client: %s", e, exc_info=True)
             raise
 
     def analyse_pdf_text(self, prompt: str) -> dict:
@@ -375,18 +391,18 @@ class Application:
         Returns:
             Dict with 'ai_summary' (str) and 'public_interest_score' (int) keys
         """
-        logger.info(f"Starting PDF analysis pipeline for {len(pdfs)} PDFs")
+        logger.info("Starting PDF analysis pipeline for %s PDFs", len(pdfs))
 
         pdf_texts = []
 
         for idx, pdf in enumerate(pdfs, 1):
             logger.info(
-                f"Processing PDF {idx}/{len(pdfs)}: {pdf['document_type']}")
+                "Processing PDF %s/%s: %s", idx, len(pdfs), pdf['document_type'])
             try:
                 pdf_path = self._download_pdf(session, pdf['pdf_url'])
                 if pdf_path is None:
                     logger.info(
-                        f"Skipping {pdf['document_type']} - PDF not available")
+                        "Skipping %s - PDF not available", pdf['document_type'])
                     continue
 
                 raw_text = self.extract_text_from_pdf(pdf_path)
@@ -397,11 +413,11 @@ class Application:
                     'text': cleaned_text
                 })
                 logger.info(
-                    f"Successfully processed {pdf['document_type']}")
+                    "Successfully processed %s", pdf['document_type'])
 
             except Exception as e:
                 logger.error(
-                    f"Failed to process PDF {idx} ({pdf['document_type']}): {e}",
+                    "Failed to process PDF %s (%s): %s", idx, pdf['document_type'], e,
                     exc_info=True
                 )
                 raise
@@ -430,7 +446,7 @@ class Application:
         address = address.strip()
         postcode_match = re.search(POSTCODE_REGEX, address)
         if not postcode_match:
-            logger.warning(f"No postcode found in address: {address}")
+            logger.warning("No postcode found in address: %s", address)
             raise ValueError(
                 f"Could not extract postcode from address: {address}")
 
@@ -475,7 +491,7 @@ class Application:
             return parsed_date
         except (ValueError, OverflowError) as e:
             logger.error(
-                f"Error parsing validation date '{validation_date}': {e}", exc_info=True)
+                "Error parsing validation date '%s': %s", validation_date, e, exc_info=True)
             raise
 
     def to_dict(self) -> dict:
