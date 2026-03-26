@@ -289,73 +289,38 @@ def parse_further_details_page(html_content: str) -> str:
 
 def parse_documents_page(html_content: str, current_page_url: str) -> List[Dict[str, str]]:
     """
-    Parses an application's documents page HTML and returns a list of
-    dictionaries, each containing a pdf_url and document_type.
+    Parses the Documents tab to extract PDF URLs and their associated document types.
     """
     soup = BeautifulSoup(html_content, "html.parser")
     documents_table = soup.find("table", id="Documents")
 
-    if not documents_table or not isinstance(documents_table, Tag):
-        logger.debug("No documents table found on this page.")
+    if not documents_table:
         return []
 
     pdf_documents: List[Dict[str, str]] = []
 
-    # 1. Dynamically find column indices from headers (Accounts for guest vs logged-in views)
-    headers = [th.get_text(strip=True).lower()
-               for th in documents_table.find_all("th")]
-
-    try:
-        type_idx = headers.index("document type")
-    except ValueError:
-        type_idx = 1  # Fallback to standard Idox index
-
-    try:
-        view_idx = headers.index("view")
-    except ValueError:
-        view_idx = -1  # Fallback to the last column in the table
-
-    rows = documents_table.find_all("tr")
-
-    for row in rows:
+    for row in documents_table.find_all("tr"):
         cols = row.find_all("td")
-        if not cols:
-            continue  # Skip header row or empty rows
 
-        # 2. Safely extract document type using the dynamic index
-        document_type = "Unknown"
-        if len(cols) > type_idx:
-            document_type = cols[type_idx].get_text(strip=True)
-
-        # 3. Locate the View link dynamically
-        view_link_tag = None
-        if len(cols) > view_idx:
-            view_link_tag = cols[view_idx].find("a", href=True)
-
-        # Fallback: Just grab the last link in the row if the layout is entirely unexpected
-        if not view_link_tag:
-            all_links = row.find_all("a", href=True)
-            if all_links:
-                view_link_tag = all_links[-1]
-
-        if not view_link_tag or not view_link_tag.get("href"):
+        # Skip header rows or unexpectedly short rows
+        if len(cols) < 6:
             continue
 
-        raw_href = view_link_tag.get("href")
+        # Hardcoded to standard Idox column indices
+        document_type = cols[2].get_text(strip=True)
+        view_link_tag = cols[5].find("a", href=True)
 
-        # 4. Strip ephemeral session tokens that break links after the scraper finishes
-        clean_href = re.sub(
-            r";jsessionid=[a-zA-Z0-9]+", "", raw_href, flags=re.IGNORECASE)
+        if not view_link_tag:
+            continue
 
-        # 5. Join using the actual page URL, not the static BASE_URL
-        pdf_url = urljoin(current_page_url, clean_href)
+        # Build the final URL
+        pdf_url = urljoin(current_page_url, view_link_tag["href"])
 
         pdf_documents.append({
             "pdf_url": pdf_url,
             "document_type": document_type,
         })
 
-    logger.debug(f"Successfully extracted {len(pdf_documents)} PDFs.")
     return pdf_documents
 
 
