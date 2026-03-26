@@ -5,17 +5,17 @@
 -- ==========================================
 
 CREATE TABLE council (
-    council_id BIGINT PRIMARY KEY,
+    council_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     council_name VARCHAR(255) NOT NULL
 );
 
 CREATE TABLE status_type (
-    status_type_id BIGINT PRIMARY KEY,
+    status_type_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     status_type VARCHAR(100) NOT NULL
 );
 
 CREATE TABLE application_type (
-    application_type_id BIGINT PRIMARY KEY,
+    application_type_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     application_type VARCHAR(100) NOT NULL
 );
 
