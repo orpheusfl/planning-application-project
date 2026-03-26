@@ -33,7 +33,4 @@ INSERT INTO status_type (status_type_id, status_type) VALUES
     ('Unknown')
 ON CONFLICT (status_type_id) DO NOTHING;
 
-
-ON CONFLICT (application_type_id) DO NOTHING;
-
 COMMIT;
