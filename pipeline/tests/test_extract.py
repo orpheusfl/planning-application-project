@@ -7,7 +7,7 @@ heavy mocking or network calls.
 
 import pytest
 from bs4 import BeautifulSoup
-from utilities.extract import (
+from ..utilities.extract import (
     clean_html_text,
     _modify_app_url,
     get_tab_url,
