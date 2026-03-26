@@ -86,26 +86,46 @@ def get_status_type_id(conn, status_name: str,
         raise
 
 
-def get_application_type_id(conn, application_type_name: str,
+def insert_application_type(conn, application_type_name: str,
                             application_type_table_name: str) -> int:
-    """ Retrieves application_type_id from application_types table. """
+    """ Inserts a new application type into the database and returns the new id. """
     try:
         with conn.cursor() as cursor:
+            cursor.execute(
+                f"INSERT INTO {application_type_table_name} (application_type) "
+                f"VALUES (%s) RETURNING application_type_id",
+                (application_type_name,))
+            new_id = cursor.fetchone()[0]
+            conn.commit()
+            logging.info("Added new application type '%s' with id %s.",
+                         application_type_name, new_id)
+            return new_id
+    except Exception as e:
+        logging.error("Error inserting application_type_id: %s", e)
+        conn.rollback()
+        raise
+
+
+def get_application_type_id(conn, application_type_name: str,
+                            application_type_table_name: str) -> int:
+    """ Retrieves application_type_id from application_types table. If application type is not found, adds it to the database and returns the new id. """
+    try:
+        with conn.cursor() as cursor:
+            # First try to get the application type id
             cursor.execute(
                 f"SELECT application_type_id FROM {application_type_table_name} "
                 f"WHERE application_type ILIKE %s", (application_type_name,))
             result = cursor.fetchone()
             if result:
                 return result[0]
-            logging.error("Application type '%s' not found in database.",
-                          application_type_name)
-            raise ValueError(
-                f"Application type '{application_type_name}' "
-                "not found in database.")
-    except ValueError:
-        raise
+
+            # If not found, insert it and return the new id
+            logging.warning("Application type '%s' not found. Adding to database.",
+                            application_type_name)
+            return insert_application_type(conn, application_type_name, application_type_table_name)
     except Exception as e:
-        logging.error("Error retrieving application_type_id: %s", e)
+        logging.error("Error retrieving/inserting application_type_id: %s", e)
+        conn.rollback()
         raise
 
 
