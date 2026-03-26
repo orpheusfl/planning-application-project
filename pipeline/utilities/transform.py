@@ -78,15 +78,6 @@ class Application:
         # Create temporary directory for PDF storage
         self._temp_dir = Path(tempfile.mkdtemp())
 
-    @staticmethod
-    def check_api_key_exists() -> bool:
-        """Check if the OpenAI API key is set in environment variables."""
-        if not os.getenv("OPENAI_API_KEY"):
-            logger.error(
-                "OpenAI API key is not set. Please set OPENAI_API_KEY in environment variables.")
-            return False
-        return True
-
     def parse_validation_date_to_datetime(self, validation_date: str) -> datetime:
         """Parse validation date string to datetime object.
         ensure this can handle various date formats and log any parsing issues for debugging.
@@ -556,10 +547,6 @@ class Application:
 
     def process(self, api_key: str) -> None:
         """Transform and enrich raw input data. Call this after __init__ to populate all fields."""
-
-        if not self.check_api_key_exists():
-            raise EnvironmentError(
-                "OpenAI API key is required to process application data.")
 
         logger.info(
             "Starting process pipeline for application %s", self.application_number)
