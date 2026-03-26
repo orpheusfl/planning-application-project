@@ -58,3 +58,12 @@ resource "aws_db_instance" "pipeline-planning-db" {
   publicly_accessible    = true
   skip_final_snapshot    = true  
 }
+
+# Initialize database schema automatically after RDS creation
+resource "null_resource" "pipeline_db_init" {
+  depends_on = [aws_db_instance.pipeline-planning-db]
+
+  provisioner "local-exec" {
+    command = "bash ../terraform/run_init_db.sh"
+  }
+}
