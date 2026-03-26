@@ -33,15 +33,4 @@ APPLICATION_TYPE_DIM_TABLE=
 DOCUMENT_TYPE_DIM_TABLE=
 ```
 
-For boto3 authentication (handled by AWS when hosted on the cloud):
-```
-AWS_REGION=
-AWS_ACCESS_KEY_ID=
-AWS_SECRET_ACCESS_KEY=
-```
-
-For uploading to the documents S3 bucket:
-```
-APPLICATION_DOCUMENTS_S3_BUCKET=
-```
 

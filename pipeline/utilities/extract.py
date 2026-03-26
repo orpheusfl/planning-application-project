@@ -435,7 +435,7 @@ def enrich_application(
     # 4. Compile and return the enriched payload
     enriched_app: Dict[str, Any] = {
         "application_number": app_id,
-        "source_url": application.get("url", ""),
+        "application_page_url": application.get("url", ""),
         "document_page_url": documents_url,
         "address": summary_data.get("address", ""),
         "description": summary_data.get("description", ""),

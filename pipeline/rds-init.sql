@@ -5,23 +5,18 @@
 -- ==========================================
 
 CREATE TABLE council (
-    council_id BIGINT PRIMARY KEY,
+    council_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     council_name VARCHAR(255) NOT NULL
 );
 
 CREATE TABLE status_type (
-    status_type_id BIGINT PRIMARY KEY,
+    status_type_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     status_type VARCHAR(100) NOT NULL
 );
 
 CREATE TABLE application_type (
-    application_type_id BIGINT PRIMARY KEY,
+    application_type_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     application_type VARCHAR(100) NOT NULL
-);
-
-CREATE TABLE document_type (
-    document_type_id BIGINT PRIMARY KEY,
-    document_type VARCHAR(100) NOT NULL
 );
 
 CREATE TABLE subscribers (
@@ -54,7 +49,8 @@ CREATE TABLE application (
     long NUMERIC(10, 7),
     ai_summary TEXT,
     public_interest_score BIGINT,
-    source_url TEXT,
+    application_page_url TEXT,
+    document_page_url TEXT,
     
     -- Foreign Key Constraints
     CONSTRAINT fk_council
@@ -71,23 +67,6 @@ CREATE TABLE application (
         REFERENCES application_type (application_type_id)
 );
 
-CREATE TABLE document (
-    document_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    application_id BIGINT NOT NULL,
-    document_type_id BIGINT NOT NULL,
-    s3_object_key VARCHAR(1024) NOT NULL,
-    
-    -- Foreign Key Constraints
-    CONSTRAINT fk_application
-        FOREIGN KEY (application_id) 
-        REFERENCES application (application_id)
-        ON DELETE CASCADE,
-        
-    CONSTRAINT fk_document_type
-        FOREIGN KEY (document_type_id) 
-        REFERENCES document_type (document_type_id)
-);
-
 -- ==========================================
 -- 3. Create Indexes for Performance
 -- ==========================================
@@ -96,9 +75,6 @@ CREATE TABLE document (
 CREATE INDEX idx_application_council_id ON application(council_id);
 CREATE INDEX idx_application_status_type_id ON application(status_type_id);
 CREATE INDEX idx_application_application_type_id ON application(application_type_id);
-
-CREATE INDEX idx_document_application_id ON document(application_id);
-CREATE INDEX idx_document_document_type_id ON document(document_type_id);
 
 -- Search Indexes (Optimized for common lookup patterns)
 CREATE INDEX idx_application_number ON application(application_number);
