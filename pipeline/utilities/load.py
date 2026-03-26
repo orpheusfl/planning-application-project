@@ -7,6 +7,7 @@
 import logging
 import os
 import psycopg2
+from dotenv import load_dotenv
 
 # ------------------------------------------------------------
 # Logging configuration
@@ -162,11 +163,13 @@ def load_application_to_rds(conn, table_name: str, application_data: dict,
 def validate_environment_variables():
     """ Validates that all required environment variables are set. """
     required_env_vars = [
-        'APPLICATION_TABLE_NAME',
-        'COUNCIL_TABLE_NAME',
-        'STATUS_TYPE_TABLE_NAME',
-        'APPLICATION_TYPE_TABLE_NAME',
+        'APPLICATION_FACT_TABLE',
+        'COUNCIL_DIM_TABLE',
+        'STATUS_DIM_TABLE',
+        'APPLICATION_TYPE_DIM_TABLE',
+
     ]
+
     missing_env_vars = [var for var in required_env_vars
                         if not os.getenv(var)]
     if missing_env_vars:
@@ -178,7 +181,7 @@ def validate_environment_variables():
 
 
 def load_application_data(conn, council_name: str,
-                                   application_info: dict):
+                          application_info: dict):
     """ Loads application data to database.
         The application_info dict should contain:
         - application_number, validation_date, address, postcode, lat, long,
@@ -192,23 +195,26 @@ def load_application_data(conn, council_name: str,
     # Gets the necessary foreign key ids for the application record from the RDS
 
     council_id = get_council_id(
-        conn, council_name, os.getenv('COUNCIL_TABLE_NAME'))
+        conn, council_name, os.getenv('COUNCIL_DIM_TABLE'))
 
     status_type_id = get_status_type_id(
         conn, application_info['status_type'],
-        os.getenv('STATUS_TYPE_TABLE_NAME'))
+        os.getenv('STATUS_DIM_TABLE'))
 
     application_type_id = get_application_type_id(
         conn, application_info['application_type'],
-        os.getenv('APPLICATION_TYPE_TABLE_NAME'))
+        os.getenv('APPLICATION_TYPE_DIM_TABLE'))
 
     load_application_to_rds(
-        conn, os.getenv('APPLICATION_TABLE_NAME'), application_info,
+        conn, os.getenv('APPLICATION_FACT_TABLE'), application_info,
         council_id, status_type_id, application_type_id)
+
 
 if __name__ == "__main__":
     logging.info(
         "This module is intended to be imported and used by other modules, not run directly.")
+
+    load_dotenv()  # Load environment variables from .env file
 
     # Tests that the functions can store some dummy data
     try:
@@ -216,8 +222,8 @@ if __name__ == "__main__":
         conn = get_rds_connection(
             rds_host='c22-planning-pipeline-db.c57vkec7dkkx.eu-west-2.rds.amazonaws.com',
             rds_port=5432,
-            rds_user='planning_admin',
-            rds_password='password',
+            rds_user='',
+            rds_password='',
             rds_db_name='planning_db'
         )
 
@@ -237,12 +243,12 @@ if __name__ == "__main__":
             'long': -0.1278,
             'ai_summary': 'This is a test summary.',
             'public_interest_score': 5,
-            'status_type': 'Validated',
+            'status_type': 'Registered',
             'application_type': 'Full Planning Permission',
             'application_page_url': 'https://example.com/app?id=PA/99/99999',
             'document_page_url': 'https://example.com/app?id=PA/99/99999&activeTab=documents'
         }
 
-        load_application_data(conn, 'Test Council', dummy_application_info)
+        load_application_data(conn, 'Tower Hamlets', dummy_application_info)
     except Exception as e:
         logging.error("Error during test connection: %s", e)
