@@ -1,0 +1,19 @@
+# Terraform Variables Example
+# Copy this file to terraform.tfvars and fill in your values
+# This file is listed in .gitignore to prevent secrets from being committed
+
+# VPC Configuration
+vpc_id = "vpc-03f0d39570fbaa750"
+
+# Dashboard Configuration
+dashboard_container_image = "123456789012.dkr.ecr.eu-west-2.amazonaws.com/c22-planning-dashboard:latest"
+dashboard_port            = 3000
+
+# RDS Configuration
+rds_username = "planning_admin"
+rds_password = "password"
+rds_database = "planning_db"
+rds_port     = 5432
+
+# Lambda Pipeline Configuration
+lambda_container_image = "123456789012.dkr.ecr.eu-west-2.amazonaws.com/c22-planning-pipeline:latest"
