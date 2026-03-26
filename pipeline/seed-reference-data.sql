@@ -16,31 +16,21 @@ BEGIN;
 -- 1. Councils
 -- ==========================================================================
 INSERT INTO council (council_id, council_name) VALUES
-    (1, 'Tower Hamlets')
+    ('Tower Hamlets')
 ON CONFLICT (council_id) DO NOTHING;
 
 -- ==========================================================================
 -- 2. Status types
 -- ==========================================================================
 INSERT INTO status_type (status_type_id, status_type) VALUES
-    (1, 'Pending Decision'),
-    (2, 'Under Consultation'),
-    (3, 'Approved'),
-    (4, 'Refused')
+    ('Appeal Decided'),
+    ('Appeal Lodged'),
+    ('Awaiting Decision'),
+    ('Decided'),
+    ('Received'),
+    ('Registered'),
+    ('Withdrawn'),
+    ('Unknown')
 ON CONFLICT (status_type_id) DO NOTHING;
-
--- ==========================================================================
--- 4. Application types
---    Best-guess mapping from application number suffixes in mock data.
---    Edit as real portal data becomes available.
--- ==========================================================================
-INSERT INTO application_type (application_type_id, application_type) VALUES
-    (1, 'Full Planning'),
-    (2, 'Householder'),
-    (3, 'Outline'),
-    (4, 'Telecommunications'),
-    (5, 'Tree Works'),
-    (6, 'Advertising')
-ON CONFLICT (application_type_id) DO NOTHING;
 
 COMMIT;

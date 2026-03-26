@@ -46,52 +46,15 @@ resource "aws_db_instance" "pipeline-planning-db" {
   instance_class         = "db.t3.micro"
   allocated_storage      = 20
   storage_type           = "gp3"
-  db_name                = "planningdata"
+  db_name                = var.rds_database
   
-  # Fetch credentials using the newly named terraform resources
-  username               = "c22_planners" # Change later
-  password               = "password123!" # Change later and store in Secrets Manager
+  # Use credentials from Terraform variable
+  username               = var.rds_username
+  password               = var.rds_password
   
   db_subnet_group_name   = aws_db_subnet_group.pipeline-rds-subnet-group.name
   vpc_security_group_ids = [aws_security_group.pipeline-rds-sg-v2.id]
   
   publicly_accessible    = true
   skip_final_snapshot    = true  
-}
-
-# Create the bash script dynamically with Terraform outputs for initializing the database
-resource "local_file" "init_db_script" {
-  filename        = "${path.module}/run_init_db.sh"
-  file_permission = "0755" # Makes the script executable automatically
-
-  content = <<-EOT
-    #!/bin/bash
-    set -e
-
-    echo "Starting database initialization..."
-
-    # =========================================================
-    # VARIABLES DYNAMICALLY INJECTED BY TERRAFORM
-    # =========================================================
-    export DB_HOST="${aws_db_instance.pipeline-planning-db.address}"
-    export DB_PORT="${aws_db_instance.pipeline-planning-db.port}"
-    export DB_NAME="${aws_db_instance.pipeline-planning-db.db_name}"
-    export DB_USER="${jsondecode(aws_secretsmanager_secret_version.pipeline-db-creds-version.secret_string)["username"]}"
-    export PGPASSWORD="${jsondecode(aws_secretsmanager_secret_version.pipeline-db-creds-version.secret_string)["password"]}"
-    # =========================================================
-
-    SQL_FILE="init.sql"
-
-    if [ ! -f "$SQL_FILE" ]; then
-        echo "Error: SQL file '$SQL_FILE' not found in the current directory!"
-        exit 1
-    fi
-
-    echo "Connecting to $DB_HOST:$DB_PORT as $DB_USER..."
-
-    # Execute the SQL script
-    psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -f "$SQL_FILE"
-
-    echo "Database initialization completed successfully!"
-  EOT
 }
