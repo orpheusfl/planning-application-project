@@ -79,7 +79,7 @@ def get_connection():
         raise ValueError(error_msg)
 
     try:
-        conn = psycopg2.connect(
+        '''conn = psycopg2.connect(
             host=creds["host"],
             port=creds["port"],
             dbname=creds["dbname"],
@@ -87,6 +87,15 @@ def get_connection():
             password=creds["password"],
             sslmode="verify-full",
             sslrootcert=ssl_cert,
+        )'''
+        conn = psycopg2.connect(
+            host="c22-planning-pipeline-db.c57vkec7dkkx.eu-west-2.rds.amazonaws.com",
+            port=5432,
+            dbname="planning_db",
+            user="planning_admin",
+            password="password",
+            sslmode="verify-full",
+            sslrootcert="./global-bundle.pem"
         )
         logging.info("Successfully connected to database.")
         return conn

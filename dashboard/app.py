@@ -41,7 +41,7 @@ def main() -> None:
 
     filtered_df, location_info = render_sidebar(applications)
 
-    # Map
+    # Render interactive map with applications plotted as colour-coded markers
     st.title("Tower Hamlets planning applications")
     map_df = filtered_df.copy()
     map_df["color"] = map_df["public_interest_score"].apply(marker_color)

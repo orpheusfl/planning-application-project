@@ -11,11 +11,9 @@ build/
 htmlcov/
 .venv
 venv/
-.env
 .env.local
 .DS_Store
 .git
 .gitignore
 tests/
-.streamlit/
 *.md
