@@ -539,4 +539,4 @@ def render_detail(application: pd.Series) -> None:
             f"[View application documents ↗]({application['document_page_url']})"
         )
     else:
-        st.caption("No documents available.")
+        st.caption("No document link available.")
