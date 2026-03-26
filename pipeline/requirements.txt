@@ -1,6 +1,8 @@
 boto3
 psycopg2
 python-dotenv
+pylint
+
 requests
 beautifulsoup4
 urllib3
