@@ -17,7 +17,7 @@ from utils.components import (
     render_sidebar,
 )
 from utils.config import CSS
-from utils.queries import load_applications, load_documents
+from utils.queries import load_applications
 
 # ---------------------------------------------------------------------------
 # Page config — must be the first Streamlit command
@@ -37,7 +37,6 @@ def main() -> None:
     st.markdown(CSS, unsafe_allow_html=True)
 
     applications = load_applications()
-    documents = load_documents()
 
     filtered_df, location_info = render_sidebar(applications)
 
@@ -56,12 +55,12 @@ def main() -> None:
         if st.session_state.get("search_query"):
             st.session_state["search_query"] = ""
         render_search_bar(filtered_df, suppress_results=True)
-        render_detail(selected_app, documents)
+        render_detail(selected_app)
     else:
         # No map selection — show search bar with results
         search_result = render_search_bar(filtered_df)
         if search_result is not None:
-            render_detail(search_result, documents)
+            render_detail(search_result)
 
 
 if __name__ == "__main__":
