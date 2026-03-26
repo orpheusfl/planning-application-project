@@ -61,9 +61,25 @@ def get_connection():
     """Return a long-lived connection to the Postgres database."""
     creds = _get_credentials()
     ssl_cert = os.getenv("DB_SSL_CERT", "./global-bundle.pem")
+    logging.info(f"Given credentials: {creds}")
+
+    # Validate credentials before attempting connection
+    required_fields = ["host", "port", "dbname", "user", "password"]
+    missing_fields = [field for field in required_fields
+                      if not creds.get(field)]
+
+    '''if missing_fields:
+        error_msg = (
+            f"Missing database credentials: {', '.join(missing_fields)}. "
+            "For local development, set DB_HOST, DB_PORT, DB_NAME, DB_USER, "
+            "DB_PASSWORD in .env. For ECS, set the SECRET_NAME environment "
+            "variable to access AWS Secrets Manager."
+        )
+        st.error(error_msg)
+        raise ValueError(error_msg)'''
 
     try:
-        conn = psycopg2.connect(
+        '''conn = psycopg2.connect(
             host=creds["host"],
             port=creds["port"],
             dbname=creds["dbname"],
@@ -71,6 +87,15 @@ def get_connection():
             password=creds["password"],
             sslmode="verify-full",
             sslrootcert=ssl_cert,
+        )'''
+        conn = psycopg2.connect(
+            host="c22-planning-pipeline-db.c57vkec7dkkx.eu-west-2.rds.amazonaws.com",
+            port=5432,
+            dbname="planning_db",
+            user="planning_admin",
+            password="password",
+            sslmode="verify-full",
+            sslrootcert="./global-bundle.pem"
         )
         logging.info("Successfully connected to database.")
         return conn

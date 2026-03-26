@@ -54,7 +54,7 @@ DOCUMENTS_SQL = """
         d.application_id,
         dt.document_type,
         INITCAP(REPLACE(dt.document_type, '_', ' ')) AS document_name,
-        d.s3_object_key      AS s3_uri,
+        d.s3_object_key      AS s3_uri
     FROM document d
     JOIN document_type dt    ON d.document_type_id = dt.document_type_id
     ORDER BY d.application_id, d.document_id;
