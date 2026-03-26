@@ -171,7 +171,6 @@ resource "aws_lambda_function" "c22-planning-pipeline" {
       DATABASE_PORT = tostring(aws_db_instance.pipeline-planning-db.port)
       DATABASE_NAME = aws_db_instance.pipeline-planning-db.db_name
       S3_BUCKET_NAME = aws_s3_bucket.c22-planning-s3.id
-      AWS_REGION = data.aws_region.current.name
       SECRET_ARN = aws_secretsmanager_secret.pipeline-db-creds.arn
     }
   }
