@@ -483,7 +483,7 @@ def get_existing_application_ids(conn: Any) -> Set[str]:
     """Retrieves application IDs already stored in the database as a fast-lookup Set."""
 
     with conn.cursor() as cursor:
-        cursor.execute("SELECT application_id FROM application")
+        cursor.execute("SELECT application_number FROM application")
 
         return {row[0] for row in cursor.fetchall()}
 

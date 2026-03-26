@@ -6,13 +6,13 @@
 
 from utilities.extract import run_scraper
 from utilities.transform import Application
-from utilities.load import get_rds_connection
+from utilities.load import get_rds_connection, load_application_data
 from dotenv import load_dotenv
 import os
-import psycopg2
 import logging
 
 load_dotenv()
+
 API_KEY = os.getenv("OPENAI_API_KEY")
 
 DB_HOST = os.getenv("DB_HOST")
@@ -37,11 +37,15 @@ def main():
                           validation_date=raw_app.get("validation_date"),
                           status=raw_app.get("status"),
                           pdfs=raw_app.get("pdfs"),
-                          application_url=raw_app.get("application_page_url"),
+                          application_page_url=raw_app.get(
+                              "application_page_url"),
                           document_page_url=raw_app.get("document_page_url")
                           )
         app.process(API_KEY)
         processed_applications.append(app.to_dict())
+
+        load_application_data(conn, council_name='Tower Hamlets',
+                              application_info=app.to_dict())
 
         if len(processed_applications) > 3:
             break

@@ -4,6 +4,12 @@
 -- 1. Create Independent/Reference Tables
 -- ==========================================
 
+DROP TABLE IF EXISTS application CASCADE;
+DROP TABLE IF EXISTS council CASCADE;
+DROP TABLE IF EXISTS status_type CASCADE;
+DROP TABLE IF EXISTS application_type CASCADE;
+DROP TABLE IF EXISTS subscribers CASCADE;
+
 CREATE TABLE council (
     council_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     council_name VARCHAR(255) NOT NULL
