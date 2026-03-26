@@ -383,19 +383,17 @@ def fetch_page(session: requests.Session, url: str) -> Optional[str]:
 # ----------------------------------------------
 
 
-MAX_PAGES = 1  # Safety cap to limit pagination during development
-
-
 def get_current_applications(session: requests.Session) -> List[Dict[str, str]]:
     """Paginates through search result pages, returning application stubs."""
+
     if not acquire_session_cookie(session, BASE_URL) or not prime_session_state(session, BASE_URL):
         logger.error("Failed to initialize session. Exiting.")
         return []
 
     applications: List[Dict[str, str]] = []
-    page = 1
 
-    while page <= MAX_PAGES:
+    page = 1
+    while True:
         logger.info(f"Fetching Page {page}...")
         url = f"{BASE_URL}pagedSearchResults.do?action=page&searchCriteria.page={page}"
         html_content = fetch_page(session, url)
@@ -429,6 +427,7 @@ def enrich_application(session: requests.Session, application: Dict[str, str]) -
     Visits a single application's summary, details, and documents pages.
     Returns a fully enriched data dictionary, or None if the primary summary fetch fails.
     """
+
     app_id = application.get("application_id", "Unknown ID")
     logger.info(f"Enriching data for application: {app_id}")
 
