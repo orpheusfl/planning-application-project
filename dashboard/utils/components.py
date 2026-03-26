@@ -494,23 +494,7 @@ def _scroll_to_detail(application_id: str) -> None:
     )
 
 
-def _render_documents(documents: pd.DataFrame) -> None:
-    """Render a list of document cards with links."""
-    for _, doc in documents.iterrows():
-        doc_type = doc["document_type"].replace("_", " ").title()
-        st.markdown(
-            f"""<div class="doc-card">
-                <span class="doc-type">{doc_type}</span><br/>
-                <strong>{doc["document_name"]}</strong><br/>
-                <code>{doc["s3_uri"]}</code>
-            </div>""",
-            unsafe_allow_html=True,
-        )
-
-
-def render_detail(
-    application: pd.Series, all_documents: pd.DataFrame
-) -> None:
+def render_detail(application: pd.Series) -> None:
     """Render the full detail panel for a selected application."""
     _scroll_to_detail(application["application_id"])
     st.markdown("---")
@@ -531,14 +515,14 @@ def render_detail(
             unsafe_allow_html=True,
         )
 
-    # Date & source link
+    # Date & application link
     col_date, col_link = st.columns(2)
     with col_date:
         st.markdown(f"**Date:** {application['date'].strftime('%d %B %Y')}")
     with col_link:
-        if application["source_url"]:
+        if application["application_page_url"]:
             st.markdown(
-                f"[View on council website ↗]({application['source_url']})"
+                f"[View on council website ↗]({application['application_page_url']})"
             )
 
     # AI summary
@@ -548,17 +532,11 @@ def render_detail(
     else:
         st.warning("No AI summary available for this application.")
 
-    # Notes
-    if application["additional_notes"]:
-        st.markdown("#### Notes")
-        st.markdown(application["additional_notes"])
-
-    # Documents
+    # Application documents
     st.markdown("#### Documents")
-    docs = all_documents[
-        all_documents["application_id"] == application["application_id"]
-    ]
-    if docs.empty:
-        st.caption("No documents available.")
+    if application["document_page_url"]:
+        st.markdown(
+            f"[View application documents ↗]({application['document_page_url']})"
+        )
     else:
-        _render_documents(docs)
+        st.caption("No documents available.")
