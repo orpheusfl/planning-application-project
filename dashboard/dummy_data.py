@@ -1,0 +1,99 @@
+"""
+Dummy planning application data for Tower Hamlets.
+
+In production, these functions would query a Postgres database.
+Replace the hardcoded DataFrames with SQL queries when the
+database is set up.
+"""
+
+import pandas as pd
+
+
+def load_applications() -> pd.DataFrame:
+    """Load planning applications. Returns one row per application."""
+    df = pd.DataFrame([
+        {"application_id": "th-2026-001", "application_number": "PA/26/00142/A1", "address": "1-5 Burdett Road, London E3 4TN", "lat": 51.5248, "long": -0.0345, "date": "2026-03-01", "status": "Pending Decision", "application_type": "Advertising",
+            "summary": "Demolition of existing commercial units and construction of a 28-storey mixed-use tower comprising 245 residential units (35% affordable), ground floor retail space, and a new public plaza. The development would be the tallest building in the immediate area.", "public_interest_score": 5, "additional_notes": "Called in by planning committee. 147 objections received. Departure from local plan policy D.DH6 on tall buildings.", "source_url": "https://development.towerhamlets.gov.uk/online-applications/applicationDetails.do?keyVal=PA2600142"},
+        {"application_id": "th-2026-002", "application_number": "PA/26/00089/FUL", "address": "42 Fournier Street, London E1 6QE", "lat": 51.5193, "long": -0.0740, "date": "2026-02-15", "status": "Pending Decision", "application_type": "Full Planning", "summary": "Partial demolition and rebuilding of rear elevation of Grade II listed Georgian townhouse in the Fournier Street Conservation Area. Proposed three-storey rear extension with contemporary glazed design.",
+            "public_interest_score": 5, "additional_notes": "Listed building in conservation area. Spitalfields Society has objected. English Heritage consulted.", "source_url": "https://development.towerhamlets.gov.uk/online-applications/applicationDetails.do?keyVal=PA2600089"},
+        {"application_id": "th-2026-003", "application_number": "PA/26/00201/FUL", "address": "15 Roman Road, London E2 0HU", "lat": 51.5310, "long": -0.0512, "date": "2026-03-10", "status": "Under Consultation", "application_type": "Full Planning",
+            "summary": "Change of use from public house (Class Sui Generis) to 6 residential flats (Class C3). The pub has been closed for 18 months and the applicant argues it is no longer commercially viable.", "public_interest_score": 4, "additional_notes": "Loss of community asset. Listed as Asset of Community Value in 2024. 23 objections.", "source_url": "https://development.towerhamlets.gov.uk/online-applications/applicationDetails.do?keyVal=PA2600201"},
+        {"application_id": "th-2026-004", "application_number": "PA/26/00156/FUL", "address": "Cayley Primary School, Aston Street, London E14 0AG", "lat": 51.5127, "long": -0.0267, "date": "2026-02-28", "status": "Approved", "application_type": "Full Planning",
+            "summary": "Erection of a two-storey modular classroom block in the existing playground to provide additional capacity for 60 pupils.", "public_interest_score": 3, "additional_notes": "Approved with conditions including construction management plan.", "source_url": "https://development.towerhamlets.gov.uk/online-applications/applicationDetails.do?keyVal=PA2600156"},
+        {"application_id": "th-2026-005", "application_number": "PA/26/00178/FUL", "address": "88 Tredegar Square, London E3 5AB", "lat": 51.5285, "long": -0.0398, "date": "2026-01-20", "status": "Pending Decision", "application_type": "Full Planning",
+            "summary": "Excavation of a full basement beneath the existing Victorian terraced house to create a swimming pool, gym, and home cinema.", "public_interest_score": 3, "additional_notes": "Neighbours at 86 and 90 have raised concerns about structural damage.", "source_url": "https://development.towerhamlets.gov.uk/online-applications/applicationDetails.do?keyVal=PA2600178"},
+        {"application_id": "th-2026-006", "application_number": "PA/26/00234/HOM", "address": "17 Lichfield Road, London E3 5AT", "lat": 51.5302, "long": -0.0371, "date": "2026-03-15", "status": "Under Consultation", "application_type": "Householder",
+            "summary": "Erection of a single-storey rear extension extending 4 metres from the rear wall with a maximum height of 3.2 metres.", "public_interest_score": 1, "additional_notes": None, "source_url": "https://development.towerhamlets.gov.uk/online-applications/applicationDetails.do?keyVal=PA2600234"},
+        {"application_id": "th-2026-007", "application_number": "PA/26/00267/FUL", "address": "203 Whitechapel Road, London E1 1DE", "lat": 51.5183, "long": -0.0618, "date": "2026-03-08", "status": "Approved", "application_type": "Full Planning",
+            "summary": "Installation of a new shopfront including replacement signage, an automated entrance door, and an external ATM machine.", "public_interest_score": 1, "additional_notes": "Approved with condition requiring signage to be non-illuminated.", "source_url": "https://development.towerhamlets.gov.uk/online-applications/applicationDetails.do?keyVal=PA2600267"},
+        {"application_id": "th-2026-008", "application_number": "PA/26/00145/TEL", "address": "Pavement outside 50 Mile End Road, London E1 4TT", "lat": 51.5222, "long": -0.0487, "date": "2026-02-01", "status": "Pending Decision", "application_type": "Telecommunications", "summary": "Installation of a 20-metre 5G telecommunications monopole with 6 antenna apertures and 2 equipment cabinets on the public highway.",
+            "public_interest_score": 3, "additional_notes": "34 objections citing visual impact and health concerns. Ward councillor has called in the application.", "source_url": "https://development.towerhamlets.gov.uk/online-applications/applicationDetails.do?keyVal=PA2600145"},
+        {"application_id": "th-2026-009", "application_number": "PA/26/00098/OUT", "address": "Former Whitechapel Bell Foundry, 32-34 Whitechapel Road, London E1 1EW", "lat": 51.5167, "long": -0.0636, "date": "2026-01-10", "status": "Refused", "application_type": "Outline", "summary": "Outline application for redevelopment of the former bell foundry site to provide a 12-storey building containing 89 residential units and a heritage interpretation centre.",
+            "public_interest_score": 5, "additional_notes": "Refused on grounds of excessive height, harm to conservation area, and insufficient affordable housing (20% vs 35% policy). Appeal expected.", "source_url": "https://development.towerhamlets.gov.uk/online-applications/applicationDetails.do?keyVal=PA2600098"},
+        {"application_id": "th-2026-010", "application_number": "PA/26/00312/TRE", "address": "Victoria Park, Old Ford Road, London E9 7DE", "lat": 51.5364, "long": -0.0368, "date": "2026-03-18", "status": "Approved", "application_type": "Tree Works",
+            "summary": "Crown reduction of 3 mature London Plane trees by up to 3 metres and removal of 1 dead Ash tree. Works required for public safety.", "public_interest_score": 1, "additional_notes": "Tree officer confirmed works are necessary.", "source_url": "https://development.towerhamlets.gov.uk/online-applications/applicationDetails.do?keyVal=PA2600312"},
+        {"application_id": "th-2026-011", "application_number": "PA/26/00189/FUL", "address": "77-79 Brick Lane, London E1 6QL", "lat": 51.5213, "long": -0.0718, "date": "2026-02-20", "status": "Under Consultation", "application_type": "Full Planning",
+            "summary": "Change of use from restaurant (Class E) to a late-night bar and live music venue (Sui Generis) with opening hours until 2am Thursday to Saturday.", "public_interest_score": 4, "additional_notes": "Brick Lane Traders Association objected citing noise. 15 letters of support welcoming cultural activity.", "source_url": "https://development.towerhamlets.gov.uk/online-applications/applicationDetails.do?keyVal=PA2600189"},
+        {"application_id": "th-2026-012", "application_number": "PA/26/00211/FUL", "address": "Land at Watts Street, London E1W 2QE", "lat": 51.5098, "long": -0.0565, "date": "2026-03-05", "status": "Pending Decision", "application_type": "Full Planning",
+            "summary": "Construction of a 6-storey residential building providing 24 social rent apartments (8x1bed, 12x2bed, 4x3bed) with communal roof garden.", "public_interest_score": 4, "additional_notes": "100% affordable housing scheme by council-owned housing company.", "source_url": "https://development.towerhamlets.gov.uk/online-applications/applicationDetails.do?keyVal=PA2600211"},
+        {"application_id": "th-2026-013", "application_number": "PA/26/00289/HOM", "address": "5 Approach Road, London E2 9LY", "lat": 51.5329, "long": -0.0555, "date": "2026-03-12", "status": "Approved", "application_type": "Householder",
+            "summary": "Installation of 2 rooflights to the rear roof slope and replacement of existing timber sash windows with double-glazed timber sash windows.", "public_interest_score": 1, "additional_notes": None, "source_url": "https://development.towerhamlets.gov.uk/online-applications/applicationDetails.do?keyVal=PA2600289"},
+        {"application_id": "th-2026-014", "application_number": "PA/26/00067/FUL", "address": "45-55 Commercial Road, London E1 1LA", "lat": 51.5143, "long": -0.0589, "date": "2026-01-05", "status": "Pending Decision", "application_type": "Full Planning", "summary": "Demolition of existing warehouse buildings and erection of a 22-storey purpose-built student accommodation block providing 650 bedrooms.",
+            "public_interest_score": 5, "additional_notes": "No nominated institution. Tower Hamlets has 4,200 student beds in pipeline. Significant local objection.", "source_url": "https://development.towerhamlets.gov.uk/online-applications/applicationDetails.do?keyVal=PA2600067"},
+        {"application_id": "th-2026-015", "application_number": "PA/26/00223/FUL", "address": "12 Ford Square, London E1 2HS", "lat": 51.5175, "long": -0.0650, "date": "2026-02-25", "status": "Under Consultation", "application_type": "Full Planning",
+            "summary": "Change of use from offices (Class E) to a community centre and place of worship (Class F1/F2). Capacity for 200 people.", "public_interest_score": 3, "additional_notes": "Transport assessment required. 8 objections about traffic and noise.", "source_url": "https://development.towerhamlets.gov.uk/online-applications/applicationDetails.do?keyVal=PA2600223"},
+    ])
+    df["date"] = pd.to_datetime(df["date"])
+    return df
+
+
+def load_documents() -> pd.DataFrame:
+    """Load planning application documents. Returns one row per document."""
+    return pd.DataFrame([
+        {"document_id": "doc-001-01", "application_id": "th-2026-001", "document_name": "Design and Access Statement", "document_type": "design_statement",
+            "s3_uri": "s3://planning-watchdog-docs/th-2026-001/design-and-access-statement.pdf", "source_url": "https://development.towerhamlets.gov.uk/documents/PA2600142/DAS.pdf"},
+        {"document_id": "doc-001-02", "application_id": "th-2026-001", "document_name": "Environmental Impact Assessment", "document_type": "environmental",
+            "s3_uri": "s3://planning-watchdog-docs/th-2026-001/environmental-impact-assessment.pdf", "source_url": "https://development.towerhamlets.gov.uk/documents/PA2600142/EIA.pdf"},
+        {"document_id": "doc-001-03", "application_id": "th-2026-001", "document_name": "Transport Assessment", "document_type": "transport",
+            "s3_uri": "s3://planning-watchdog-docs/th-2026-001/transport-assessment.pdf", "source_url": "https://development.towerhamlets.gov.uk/documents/PA2600142/TA.pdf"},
+        {"document_id": "doc-001-04", "application_id": "th-2026-001", "document_name": "Affordable Housing Statement", "document_type": "affordable_housing",
+            "s3_uri": "s3://planning-watchdog-docs/th-2026-001/affordable-housing-statement.pdf", "source_url": "https://development.towerhamlets.gov.uk/documents/PA2600142/AHS.pdf"},
+        {"document_id": "doc-002-01", "application_id": "th-2026-002", "document_name": "Heritage Impact Assessment", "document_type": "heritage",
+            "s3_uri": "s3://planning-watchdog-docs/th-2026-002/heritage-impact-assessment.pdf", "source_url": "https://development.towerhamlets.gov.uk/documents/PA2600089/HIA.pdf"},
+        {"document_id": "doc-002-02", "application_id": "th-2026-002", "document_name": "Structural Survey", "document_type": "structural",
+            "s3_uri": "s3://planning-watchdog-docs/th-2026-002/structural-survey.pdf", "source_url": "https://development.towerhamlets.gov.uk/documents/PA2600089/structural.pdf"},
+        {"document_id": "doc-003-01", "application_id": "th-2026-003", "document_name": "Planning Statement", "document_type": "planning_statement",
+            "s3_uri": "s3://planning-watchdog-docs/th-2026-003/planning-statement.pdf", "source_url": "https://development.towerhamlets.gov.uk/documents/PA2600201/PS.pdf"},
+        {"document_id": "doc-003-02", "application_id": "th-2026-003", "document_name": "Marketing Evidence Report", "document_type": "marketing",
+            "s3_uri": "s3://planning-watchdog-docs/th-2026-003/marketing-evidence.pdf", "source_url": "https://development.towerhamlets.gov.uk/documents/PA2600201/marketing.pdf"},
+        {"document_id": "doc-004-01", "application_id": "th-2026-004", "document_name": "Design and Access Statement", "document_type": "design_statement",
+            "s3_uri": "s3://planning-watchdog-docs/th-2026-004/design-and-access-statement.pdf", "source_url": "https://development.towerhamlets.gov.uk/documents/PA2600156/DAS.pdf"},
+        {"document_id": "doc-004-02", "application_id": "th-2026-004", "document_name": "Decision Notice", "document_type": "decision_notice",
+            "s3_uri": "s3://planning-watchdog-docs/th-2026-004/decision-notice.pdf", "source_url": "https://development.towerhamlets.gov.uk/documents/PA2600156/decision.pdf"},
+        {"document_id": "doc-005-01", "application_id": "th-2026-005", "document_name": "Structural Engineers Report", "document_type": "structural",
+            "s3_uri": "s3://planning-watchdog-docs/th-2026-005/structural-report.pdf", "source_url": "https://development.towerhamlets.gov.uk/documents/PA2600178/structural.pdf"},
+        {"document_id": "doc-006-01", "application_id": "th-2026-006", "document_name": "Application Form and Plans", "document_type": "drawings",
+            "s3_uri": "s3://planning-watchdog-docs/th-2026-006/application-form-and-plans.pdf", "source_url": "https://development.towerhamlets.gov.uk/documents/PA2600234/plans.pdf"},
+        {"document_id": "doc-007-01", "application_id": "th-2026-007", "document_name": "Shopfront Design Details", "document_type": "drawings",
+            "s3_uri": "s3://planning-watchdog-docs/th-2026-007/shopfront-design.pdf", "source_url": "https://development.towerhamlets.gov.uk/documents/PA2600267/shopfront.pdf"},
+        {"document_id": "doc-008-01", "application_id": "th-2026-008", "document_name": "ICNIRP Certificate", "document_type": "telecoms",
+            "s3_uri": "s3://planning-watchdog-docs/th-2026-008/icnirp-certificate.pdf", "source_url": "https://development.towerhamlets.gov.uk/documents/PA2600145/icnirp.pdf"},
+        {"document_id": "doc-009-01", "application_id": "th-2026-009", "document_name": "Heritage Impact Assessment", "document_type": "heritage",
+            "s3_uri": "s3://planning-watchdog-docs/th-2026-009/heritage-impact-assessment.pdf", "source_url": "https://development.towerhamlets.gov.uk/documents/PA2600098/HIA.pdf"},
+        {"document_id": "doc-009-02", "application_id": "th-2026-009", "document_name": "Decision Notice", "document_type": "decision_notice",
+            "s3_uri": "s3://planning-watchdog-docs/th-2026-009/decision-notice.pdf", "source_url": "https://development.towerhamlets.gov.uk/documents/PA2600098/decision.pdf"},
+        {"document_id": "doc-010-01", "application_id": "th-2026-010", "document_name": "Arboricultural Report", "document_type": "arboricultural",
+            "s3_uri": "s3://planning-watchdog-docs/th-2026-010/arboricultural-report.pdf", "source_url": "https://development.towerhamlets.gov.uk/documents/PA2600312/arb-report.pdf"},
+        {"document_id": "doc-011-01", "application_id": "th-2026-011", "document_name": "Noise Impact Assessment", "document_type": "noise",
+            "s3_uri": "s3://planning-watchdog-docs/th-2026-011/noise-impact-assessment.pdf", "source_url": "https://development.towerhamlets.gov.uk/documents/PA2600189/noise.pdf"},
+        {"document_id": "doc-012-01", "application_id": "th-2026-012", "document_name": "Design and Access Statement", "document_type": "design_statement",
+            "s3_uri": "s3://planning-watchdog-docs/th-2026-012/design-and-access-statement.pdf", "source_url": "https://development.towerhamlets.gov.uk/documents/PA2600211/DAS.pdf"},
+        {"document_id": "doc-013-01", "application_id": "th-2026-013", "document_name": "Application Form and Plans", "document_type": "drawings",
+            "s3_uri": "s3://planning-watchdog-docs/th-2026-013/application-plans.pdf", "source_url": "https://development.towerhamlets.gov.uk/documents/PA2600289/plans.pdf"},
+        {"document_id": "doc-014-01", "application_id": "th-2026-014", "document_name": "Planning Statement", "document_type": "planning_statement",
+            "s3_uri": "s3://planning-watchdog-docs/th-2026-014/planning-statement.pdf", "source_url": "https://development.towerhamlets.gov.uk/documents/PA2600067/PS.pdf"},
+        {"document_id": "doc-014-02", "application_id": "th-2026-014", "document_name": "Student Housing Need Assessment", "document_type": "needs_assessment",
+            "s3_uri": "s3://planning-watchdog-docs/th-2026-014/student-needs-assessment.pdf", "source_url": "https://development.towerhamlets.gov.uk/documents/PA2600067/needs.pdf"},
+        {"document_id": "doc-015-01", "application_id": "th-2026-015", "document_name": "Planning Statement", "document_type": "planning_statement",
+            "s3_uri": "s3://planning-watchdog-docs/th-2026-015/planning-statement.pdf", "source_url": "https://development.towerhamlets.gov.uk/documents/PA2600223/PS.pdf"},
+    ])

@@ -38,6 +38,7 @@ def get_rds_connection(rds_host: str, rds_port: int, rds_user: str,
         logging.error("Error connecting to RDS database: %s", e)
         raise
 
+
 # ------------------------------------------------------------
 # Get s3 client
 # ------------------------------------------------------------

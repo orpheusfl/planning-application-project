@@ -10,3 +10,11 @@ openai
 boto3
 psycopg2
 python-dotenv
+<<<<<<< feature/#23-extract-text-from-pdfs
+=======
+pylint
+
+requests
+beautifulsoup4
+urllib3
+>>>>>>> main
