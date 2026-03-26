@@ -11,8 +11,14 @@ import urllib3
 from urllib.parse import urljoin, urlparse, parse_qs, urlencode, urlunparse
 
 import requests
+from requests.exceptions import RequestException
 from bs4 import BeautifulSoup
-from typing import Any, Dict, List, Optional
+from bs4.element import Tag  # REFACTOR: Imported Tag for proper typing of parsed HTML elements
+from typing import Any, Dict, List, Optional, Set
+
+
+import re
+
 
 
 # --- Configuration ---
@@ -25,6 +31,10 @@ SUMMARY_FIELD_MAPPING: Dict[str, str] = {
     "Proposal": "description",
     "Status": "status",
 }
+
+FURTHER_DETAILS_FIELD_MAPPING: Dict[str, str] = {
+    "Application Type": "app_type",
+}       
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -57,10 +67,15 @@ def create_scraper_session() -> requests.Session:
     return session
 
 
-def acquire_session_cookie(session: requests.Session) -> bool:
+def acquire_session_cookie(session: requests.Session, url: str) -> bool:
     """Hits the homepage to establish the initial JSESSIONID cookie."""
     logger.info("Acquiring fresh JSESSIONID...")
-    session.get(BASE_URL)
+
+    try:
+        session.get(url, timeout=10)
+    except RequestException as e:
+        logger.error(f"Network error acquiring cookie: {e}")
+        return False
 
     if "JSESSIONID" not in session.cookies:
         logger.error("Failed to capture JSESSIONID.")
@@ -74,7 +89,6 @@ def acquire_session_cookie(session: requests.Session) -> bool:
 def extract_csrf_token(html_content: str) -> Optional[str]:
     """
     Parses HTML to find the hidden CSRF security token required for POST requests.
-    Separated from network requests to allow for easy unit testing.
     """
     soup = BeautifulSoup(html_content, "html.parser")
     csrf_input = soup.find("input", {"name": "_csrf"})
@@ -96,43 +110,44 @@ def _check_for_server_error(html_content: str) -> bool:
     return False
 
 
-def prime_session_state(session: requests.Session) -> bool:
+def prime_session_state(session: requests.Session, url: str) -> bool:
     """
     Navigates the Idox system to establish the server-side search state.
-    This requires handling a CSRF token and mimicking a specific form submission.
+    Requires handling a CSRF token and mimicking a specific form submission.
     """
     logger.info("Priming server state (Handling CSRF & POST)...")
-    search_page_url = f"{BASE_URL}search.do?action=advanced"
+    search_page_url = f"{url}search.do?action=advanced"
 
-    # STEP 1: Land on the search page to grab the hidden CSRF token
-    get_response = session.get(search_page_url)
-    csrf_token = extract_csrf_token(get_response.text)
+    try:
+        get_response = session.get(search_page_url, timeout=10)
+        csrf_token = extract_csrf_token(get_response.text)
 
-    if not csrf_token:
-        logger.error("Could not find the _csrf token in the page HTML.")
+        if not csrf_token:
+            logger.error("Could not find the _csrf token in the page HTML.")
+            return False
+
+        logger.debug(f"Found CSRF Token: {csrf_token}")
+
+        primer_url = f"{url}currentListResults.do?action=firstPage"
+        payload = {
+            "_csrf": csrf_token,
+            "currentListSearch": "true",
+            "searchCriteria.currentListSearch": "true",
+            "searchType": "Application",
+        }
+
+        session.headers.update({"Referer": search_page_url})
+        post_response = session.post(primer_url, data=payload, timeout=10)
+
+        if _check_for_server_error(post_response.text):
+            logger.error("Server returned an error or timeout during priming.")
+            return False
+
+        logger.info("Server state primed successfully.")
+        return True
+    except RequestException as e:
+        logger.error(f"Network error during session priming: {e}")
         return False
-
-    logger.debug(f"Found CSRF Token: {csrf_token}")
-
-    # STEP 2: Submit the form data to initialise results
-    primer_url = f"{BASE_URL}currentListResults.do?action=firstPage"
-    payload = {
-        "_csrf": csrf_token,
-        "currentListSearch": "true",
-        "searchCriteria.currentListSearch": "true",
-        "searchType": "Application",
-    }
-
-    session.headers.update({"Referer": search_page_url})
-    post_response = session.post(primer_url, data=payload)
-
-    # STEP 3: Verify the state was primed successfully
-    if _check_for_server_error(post_response.text):
-        logger.error("Server returned an error or timeout during priming.")
-        return False
-
-    logger.info("Server state primed successfully.")
-    return True
 
 
 # ----------------------------------------------
@@ -149,15 +164,15 @@ def _modify_app_url(url: str, target_tab: str) -> str:
     return urlunparse(parsed._replace(query=new_query))
 
 
-def get_summary_url(app_data: Dict[str, str]) -> str:
-    """Generates the Summary tab URL from an application's base URL."""
-    return _modify_app_url(app_data["url"], "summary")
-
-
-def get_documents_url(app_data: Dict[str, str]) -> str:
-    """Generates the Documents tab URL from an application's base URL."""
-    return _modify_app_url(app_data["url"], "documents")
-
+def get_tab_url(app_data: Dict[str, str], tab_name: str) -> str:
+    """
+    Generates the URL for a specific tab (e.g., 'summary', 'documents', 'details')
+    from an application's base URL.
+    
+    # REFACTOR: Consolidated get_summary_url, get_documents_url, etc. 
+    # into a single DRY function.
+    """
+    return _modify_app_url(app_data["url"], tab_name)
 
 
 # ----------------------------------------------
@@ -165,7 +180,7 @@ def get_documents_url(app_data: Dict[str, str]) -> str:
 # ----------------------------------------------
 
 
-def extract_application_id(app_html) -> str:
+def extract_application_id(app_html: Tag) -> str:
     """Extracts the application reference number from a single search result element."""
     meta_tag = app_html.find("p", class_="metaInfo")
     if not meta_tag:
@@ -180,7 +195,7 @@ def extract_application_id(app_html) -> str:
     return "N/A"
 
 
-def extract_application_url(app_html) -> str:
+def extract_application_url(app_html: Tag) -> str:
     """Extracts the application detail page URL from a single search result element."""
     link_tag = app_html.find("a")
     if link_tag and link_tag.get("href"):
@@ -188,7 +203,7 @@ def extract_application_url(app_html) -> str:
     return "N/A"
 
 
-def parse_search_result(app_html) -> Dict[str, str]:
+def parse_search_result(app_html: Tag) -> Dict[str, str]:
     """Extracts the application ID and URL from a single search result element."""
     return {
         "application_id": extract_application_id(app_html),
@@ -198,18 +213,17 @@ def parse_search_result(app_html) -> Dict[str, str]:
 
 def parse_results_page(html_content: str) -> List[Dict[str, str]]:
     """
-    Parses a full search results page and returns a list of application stubs
-    (each containing an application_id and url).
+    Parses a full search results page and returns a list of application stubs.
     """
     soup = BeautifulSoup(html_content, "html.parser")
     apps = soup.find_all("li", class_="searchresult")
 
     logger.info(f"Found {len(apps)} search result elements on page.")
 
-    page_data: List[Dict[str, str]] = []
-    for app in apps:
-        result = parse_search_result(app)
-        page_data.append(result)
+    # REFACTOR: Used list comprehension for cleaner extraction
+    page_data = [parse_search_result(app) for app in apps]
+    
+    for result in page_data:
         logger.debug(f"Extracted: {result['application_id']} - {result['url']}")
 
     return page_data
@@ -220,20 +234,20 @@ def parse_results_page(html_content: str) -> List[Dict[str, str]]:
 # ----------------------------------------------
 
 
-def clean_html_text(element) -> str:
+def clean_html_text(element: Optional[Tag]) -> str:
     """Strips whitespace, non-breaking spaces, and extra newlines from an HTML element."""
     if not element:
         return "N/A"
     return " ".join(element.get_text().split()).strip()
 
 
-def extract_summary_metadata(soup: BeautifulSoup) -> Dict[str, str]:
-    """Extracts key metadata fields from the simpleDetailsTable on a summary page."""
+def extract_table_metadata(soup: BeautifulSoup, table_id: str, field_mapping: Dict[str, str]) -> Dict[str, str]:
+    """Extracts key metadata fields from a specified table using a field mapping."""
     metadata: Dict[str, str] = {}
 
-    table = soup.find("table", id="simpleDetailsTable")
-    if not table:
-        logger.warning("Could not find simpleDetailsTable in the summary page.")
+    table = soup.find("table", id=table_id)
+    if not table or not isinstance(table, Tag):
+        logger.warning(f"Could not find table with ID '{table_id}'.")
         return metadata
 
     for row in table.find_all("tr"):
@@ -243,22 +257,26 @@ def extract_summary_metadata(soup: BeautifulSoup) -> Dict[str, str]:
             continue
 
         label = clean_html_text(header)
-        if label in SUMMARY_FIELD_MAPPING:
-            metadata[SUMMARY_FIELD_MAPPING[label]] = clean_html_text(value)
+        if label in field_mapping:
+            metadata[field_mapping[label]] = clean_html_text(value)
 
     return metadata
 
 
 def parse_summary_page(html_content: str) -> Dict[str, str]:
-    """
-    Parses an application's summary page HTML and returns a dictionary with
-    keys: address, description, status, validation_date.
-    """
+    """Parses an application's summary page HTML for key metadata."""
     soup = BeautifulSoup(html_content, "html.parser")
-    return extract_summary_metadata(soup)
+    return extract_table_metadata(soup, "simpleDetailsTable", SUMMARY_FIELD_MAPPING)
 
 
-def parse_documents_page(html_content: str) -> List[Dict[str, str]]:
+def parse_further_details_page(html_content: str) -> str:
+    """Parses the Further Details Tab specifically to get the Application Type."""
+    soup = BeautifulSoup(html_content, 'html.parser')
+    result = extract_table_metadata(soup, "applicationDetails", FURTHER_DETAILS_FIELD_MAPPING)
+    return result.get("app_type", "N/A")
+
+
+def parse_documents_page(html_content: str, current_page_url: str) -> List[Dict[str, str]]:
     """
     Parses an application's documents page HTML and returns a list of
     dictionaries, each containing a pdf_url and document_type.
@@ -266,27 +284,59 @@ def parse_documents_page(html_content: str) -> List[Dict[str, str]]:
     soup = BeautifulSoup(html_content, "html.parser")
     documents_table = soup.find("table", id="Documents")
 
-    if not documents_table:
+    if not documents_table or not isinstance(documents_table, Tag):
         logger.debug("No documents table found on this page.")
         return []
 
     pdf_documents: List[Dict[str, str]] = []
+    
+    # 1. Dynamically find column indices from headers (Accounts for guest vs logged-in views)
+    headers = [th.get_text(strip=True).lower() for th in documents_table.find_all("th")]
+    
+    try:
+        type_idx = headers.index("document type")
+    except ValueError:
+        type_idx = 1  # Fallback to standard Idox index
+        
+    try:
+        view_idx = headers.index("view")
+    except ValueError:
+        view_idx = -1 # Fallback to the last column in the table
+
     rows = documents_table.find_all("tr")
 
     for row in rows:
         cols = row.find_all("td")
+        if not cols:
+            continue  # Skip header row or empty rows
 
-        # Columns: [0] Checkbox, [1] Date, [2] Type, [3] Drawing No, [4] Description, [5] View Link
-        if len(cols) < 6:
-            continue
+        # 2. Safely extract document type using the dynamic index
+        document_type = "Unknown"
+        if len(cols) > type_idx:
+            document_type = cols[type_idx].get_text(strip=True)
 
-        document_type = cols[2].get_text(strip=True)
-        view_link_tag = cols[5].find("a")
+        # 3. Locate the View link dynamically
+        view_link_tag = None
+        if len(cols) > view_idx:
+            view_link_tag = cols[view_idx].find("a", href=True)
+            
+        # Fallback: Just grab the last link in the row if the layout is entirely unexpected
+        if not view_link_tag:
+            all_links = row.find_all("a", href=True)
+            if all_links:
+                view_link_tag = all_links[-1]
 
         if not view_link_tag or not view_link_tag.get("href"):
             continue
+            
+        raw_href = view_link_tag.get("href")
+        
+        # 4. Strip ephemeral session tokens that break links after the scraper finishes
+        clean_href = re.sub(r";jsessionid=[a-zA-Z0-9]+", "", raw_href, flags=re.IGNORECASE)
 
-        pdf_url = urljoin(BASE_URL, view_link_tag.get("href"))
+        # 5. Join using the actual page URL, not the static BASE_URL
+        pdf_url = urljoin(current_page_url, clean_href)
+        
         pdf_documents.append({
             "pdf_url": pdf_url,
             "document_type": document_type,
@@ -304,13 +354,15 @@ def parse_documents_page(html_content: str) -> List[Dict[str, str]]:
 def fetch_page(session: requests.Session, url: str) -> Optional[str]:
     """
     Fetches a page using the session and returns its HTML content.
-    Returns None if the request fails.
+    Returns None if the request fails or times out.
     """
-    response = session.get(url, timeout=10)
-    if response.status_code != 200:
-        logger.error(f"Status {response.status_code} for URL: {url}")
+    try:
+        response = session.get(url, timeout=10)
+        response.raise_for_status() # REFACTOR: Automatically catch 4xx/5xx errors
+        return response.text
+    except RequestException as e:
+        logger.error(f"Request failed for URL {url}: {e}")
         return None
-    return response.text
 
 
 # ----------------------------------------------
@@ -322,16 +374,9 @@ MAX_PAGES = 1  # Safety cap to limit pagination during development
 
 
 def get_current_applications(session: requests.Session) -> List[Dict[str, str]]:
-    """
-    Authenticates and paginates through all search result pages,
-    returning a list of application stubs (id + url).
-    """
-    if not acquire_session_cookie(session):
-        logger.error("Failed to acquire session cookie. Exiting.")
-        return []
-
-    if not prime_session_state(session):
-        logger.error("Failed to prime session state. Exiting.")
+    """Paginates through search result pages, returning application stubs."""
+    if not acquire_session_cookie(session, BASE_URL) or not prime_session_state(session, BASE_URL):
+        logger.error("Failed to initialize session. Exiting.")
         return []
 
     applications: List[Dict[str, str]] = []
@@ -340,16 +385,20 @@ def get_current_applications(session: requests.Session) -> List[Dict[str, str]]:
     while page <= MAX_PAGES:
         logger.info(f"Fetching Page {page}...")
         url = f"{BASE_URL}pagedSearchResults.do?action=page&searchCriteria.page={page}"
-        response = session.get(url)
+        html_content = fetch_page(session, url)
 
-        if "session has timed out" in response.text.lower():
+        if not html_content:
+            logger.warning(f"Failed to fetch page {page}.")
+            break
+
+        if "session has timed out" in html_content.lower():
             logger.warning(f"Session timed out on page {page}. Re-priming...")
-            if not prime_session_state(session):
+            if not prime_session_state(session, BASE_URL):
                 logger.error("Failed to re-prime session state. Stopping.")
                 break
             continue
 
-        extracted_apps = parse_results_page(response.text)
+        extracted_apps = parse_results_page(html_content)
 
         if not extracted_apps:
             logger.info(f"No applications found on page {page}. Ending pagination.")
@@ -363,13 +412,14 @@ def get_current_applications(session: requests.Session) -> List[Dict[str, str]]:
 
 def enrich_application(session: requests.Session, application: Dict[str, str]) -> Optional[Dict[str, Any]]:
     """
-    Visits a single application's summary and documents pages and returns
-    a fully enriched data dictionary, or None on failure.
+    Visits a single application's summary, details, and documents pages.
+    Returns a fully enriched data dictionary, or None if the primary summary fetch fails.
     """
     app_id = application.get("application_id", "Unknown ID")
     logger.info(f"Enriching data for application: {app_id}")
 
-    summary_url = get_summary_url(application)
+    # 1. Fetch and parse the Summary tab (Primary data)
+    summary_url = get_tab_url(application, "summary")
     summary_html = fetch_page(session, summary_url)
     if not summary_html:
         logger.error(f"[{app_id}] Failed to fetch summary page.")
@@ -377,21 +427,36 @@ def enrich_application(session: requests.Session, application: Dict[str, str]) -
 
     summary_data = parse_summary_page(summary_html)
 
-    documents_url = get_documents_url(application)
+    # 2. Fetch and parse the Further Details tab (For Application Type)
+    details_url = get_tab_url(application, "details")
+    details_html = fetch_page(session, details_url)
+    if details_html:
+        summary_data["application_type"] = parse_further_details_page(details_html)
+    else:
+        logger.warning(f"[{app_id}] Failed to fetch details page. Defaulting App Type.")
+        summary_data["application_type"] = "N/A"
+
+    # 3. Fetch and parse the Documents tab 
+    documents_url = get_tab_url(application, "documents")
     documents_html = fetch_page(session, documents_url)
-    if not documents_html:
-        logger.error(f"[{app_id}] Failed to fetch documents page.")
-        return None
+    
+    if documents_html:
+        # REFACTOR: Pass the documents_url into the parser to construct accurate absolute links
+        pdf_data = parse_documents_page(documents_html, current_page_url=documents_url)
+    else:
+        logger.warning(f"[{app_id}] Failed to fetch documents page.")
+        pdf_data = []
 
-    pdf_data = parse_documents_page(documents_html)
-
+    # 4. Compile and return the enriched payload
     enriched_app: Dict[str, Any] = {
         "application_number": app_id,
         "source_url": application.get("url", ""),
+        "document_page_url": documents_url,
         "address": summary_data.get("address", ""),
         "description": summary_data.get("description", ""),
         "status": summary_data.get("status", ""),
         "validation_date": summary_data.get("validation_date", ""),
+        "application_type": summary_data.get("application_type", ""),
         "pdfs": pdf_data,
     }
 
@@ -400,18 +465,14 @@ def enrich_application(session: requests.Session, application: Dict[str, str]) -
 
 
 def enrich_applications(session: requests.Session, applications: List[Dict[str, str]]) -> List[Dict[str, Any]]:
-    """
-    Iterates through a list of application stubs and enriches each one
-    with data from its summary and documents pages.
-    """
+    """Iterates through application stubs and enriches each one."""
     total = len(applications)
     logger.info(f"Starting detailed scrape for {total} applications...")
-
+    
     enriched: List[Dict[str, Any]] = []
     for index, app in enumerate(applications, start=1):
         logger.debug(f"Processing {index}/{total}...")
-        result = enrich_application(session, app)
-        if result:
+        if result := enrich_application(session, app):
             enriched.append(result)
 
     logger.info(f"Enrichment complete. {len(enriched)}/{total} succeeded.")
@@ -423,28 +484,22 @@ def enrich_applications(session: requests.Session, applications: List[Dict[str, 
 # ----------------------------------------------
 
 
-def get_existing_application_ids(conn) -> List[str]:
-    """Retrieves application IDs already stored in the database."""
+def get_existing_application_ids(conn: Any) -> Set[str]:
+    """Retrieves application IDs already stored in the database as a fast-lookup Set."""
+    # REFACTOR: Added `Any` typehint for the DB connection (or sqlite3.Connection)
     if conn is None:
-        return []
+        return set()
 
     with conn.cursor() as cursor:
         cursor.execute("SELECT application_id FROM applications")
-        existing_ids: List[str] = []
-        for row in cursor.fetchall():
-            existing_ids.append(row[0])
-
-    return existing_ids
+        # REFACTOR: Using a set comprehension directly for O(1) lookup speeds later
+        return {row[0] for row in cursor.fetchall()}
 
 
-def filter_new_applications(
-    scraped_apps: List[Dict[str, str]],
-    existing_ids: List[str],) -> List[Dict[str, str]]:
+def filter_new_applications(scraped_apps: List[Dict[str, str]], existing_ids: Set[str]) -> List[Dict[str, str]]:
     """Returns only the applications whose IDs are not already in the database."""
-    new_apps: List[Dict[str, str]] = []
-    for app in scraped_apps:
-        if app["application_id"] not in existing_ids:
-            new_apps.append(app)
+    # REFACTOR: Switched existing_ids to a Set and used a list comprehension
+    new_apps = [app for app in scraped_apps if app["application_id"] not in existing_ids]
 
     logger.info(f"Filtered {len(new_apps)} new applications to process.")
     return new_apps
@@ -469,8 +524,7 @@ def run_scraper() -> List[Dict[str, Any]]:
     new_applications = filter_new_applications(current_applications, existing_ids)
     logger.info(f"New applications to enrich: {len(new_applications)}")
 
-    enriched = enrich_applications(session, new_applications)
-    return enriched
+    return enrich_applications(session, new_applications)
 
 
 if __name__ == "__main__":
