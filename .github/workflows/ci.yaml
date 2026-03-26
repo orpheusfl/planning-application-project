@@ -28,7 +28,7 @@ jobs:
 
       - name: Run tests
         working-directory: pipeline
-        run: pytest tests/ -v
+        run: python -m pytest tests/ -v
 
       - name: Run pylint
         working-directory: pipeline
