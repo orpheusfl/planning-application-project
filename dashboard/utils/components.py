@@ -502,9 +502,6 @@ def _render_documents(documents: pd.DataFrame) -> None:
             f"""<div class="doc-card">
                 <span class="doc-type">{doc_type}</span><br/>
                 <strong>{doc["document_name"]}</strong><br/>
-                <a href="{doc["source_url"]}" target="_blank">
-                    View original ↗</a>
-                &nbsp;·&nbsp;
                 <code>{doc["s3_uri"]}</code>
             </div>""",
             unsafe_allow_html=True,
