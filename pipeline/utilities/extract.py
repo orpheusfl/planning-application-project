@@ -6,19 +6,15 @@ parsing (summary + documents), and orchestration of the full scrape pipeline.
 """
 
 import logging
-import pprint
-import urllib3
+import re
+from typing import Any, Dict, List, Optional, Set
 from urllib.parse import urljoin, urlparse, parse_qs, urlencode, urlunparse
 
+import urllib3
 import requests
 from requests.exceptions import RequestException
 from bs4 import BeautifulSoup
-
 from bs4.element import Tag
-from typing import Any, Dict, List, Optional, Set
-import re
-
-from load import get_rds_connection
 
 
 # --- Configuration ---
@@ -69,7 +65,7 @@ def create_scraper_session() -> requests.Session:
         })
         return session
     except Exception as e:
-        logger.error(f"Error creating session: {e}")
+        logger.error("Error creating session: %s", e)
         raise
 
 
@@ -80,11 +76,11 @@ def acquire_session_cookie(session: requests.Session, url: str) -> bool:
     try:
         session.get(url, timeout=10)
     except RequestException as e:
-        logger.error(f"Network error acquiring cookie: {e}")
+        logger.error("Network error acquiring cookie: %s", e)
         return False
 
     if "JSESSIONID" not in session.cookies:
-        logger.error("Failed to capture JSESSIONID.")
+        logger.error("Failed to capture JSESSIONID")
         return False
 
     cookie_preview = session.cookies["JSESSIONID"][:10]
@@ -129,10 +125,10 @@ def prime_session_state(session: requests.Session, url: str) -> bool:
         csrf_token = extract_csrf_token(get_response.text)
 
         if not csrf_token:
-            logger.error("Could not find the _csrf token in the page HTML.")
+            logger.error("Could not find the _csrf token in the page HTML")
             return False
 
-        logger.debug(f"Found CSRF Token: {csrf_token}")
+        logger.debug("Found CSRF Token: %s", csrf_token)
 
         primer_url = f"{url}currentListResults.do?action=firstPage"
         payload = {
@@ -146,13 +142,13 @@ def prime_session_state(session: requests.Session, url: str) -> bool:
         post_response = session.post(primer_url, data=payload, timeout=10)
 
         if _check_for_server_error(post_response.text):
-            logger.error("Server returned an error or timeout during priming.")
+            logger.error("Server returned an error or timeout during priming")
             return False
 
-        logger.info("Server state primed successfully.")
+        logger.info("Server state primed successfully")
         return True
     except RequestException as e:
-        logger.error(f"Network error during session priming: {e}")
+        logger.error("Network error during session priming: %s", e)
         return False
 
 
@@ -194,7 +190,7 @@ def extract_application_id(app_html: Tag) -> str:
     if not meta_tag:
         return "N/A"
 
-    # Extracts the text content and splits it by the '|' character to separate different pieces of metadata
+    # Extracts the text content and splits it by '|' to separate metadata
     meta_parts = meta_tag.text.split("|")
     for part in meta_parts:
         clean_part = " ".join(part.split())
@@ -227,14 +223,16 @@ def parse_results_page(html_content: str) -> List[Dict[str, str]]:
     soup = BeautifulSoup(html_content, "html.parser")
     apps = soup.find_all("li", class_="searchresult")
 
-    logger.info(f"Found {len(apps)} search result elements on page.")
+    logger.info("Found %d search result elements on page", len(apps))
 
     # For each search result element, extract the application ID and URL using the helper functions
     page_data = [parse_search_result(app) for app in apps]
 
     for result in page_data:
         logger.debug(
-            f"Extracted: {result['application_id']} - {result['url']}")
+            "Extracted: %s - %s",
+            result['application_id'],
+            result['url'])
 
     return page_data
 
@@ -251,13 +249,17 @@ def clean_html_text(element: Optional[Tag]) -> str:
     return " ".join(element.get_text().split()).strip()
 
 
-def extract_table_metadata(soup: BeautifulSoup, table_id: str, field_mapping: Dict[str, str]) -> Dict[str, str]:
+def extract_table_metadata(
+    soup: BeautifulSoup,
+    table_id: str,
+    field_mapping: Dict[str, str]
+) -> Dict[str, str]:
     """Extracts key metadata fields from a specified table using a field mapping."""
     metadata: Dict[str, str] = {}
 
     table = soup.find("table", id=table_id)
     if not table or not isinstance(table, Tag):
-        logger.warning(f"Could not find table with ID '{table_id}'.")
+        logger.warning("Could not find table with ID '%s'", table_id)
         return metadata
 
     for row in table.find_all("tr"):
@@ -339,7 +341,7 @@ def fetch_page(session: requests.Session, url: str) -> Optional[str]:
         response.raise_for_status()
         return response.text
     except RequestException as e:
-        logger.error(f"Request failed for URL {url}: {e}")
+        logger.error("Request failed for URL %s: %s", url, e)
         return None
 
 
@@ -387,20 +389,23 @@ def get_current_applications(session: requests.Session) -> List[Dict[str, str]]:
     return applications
 
 
-def enrich_application(session: requests.Session, application: Dict[str, str]) -> Optional[Dict[str, Any]]:
+def enrich_application(
+    session: requests.Session,
+    application: Dict[str, str]
+) -> Optional[Dict[str, Any]]:
     """
     Visits a single application's summary, details, and documents pages.
-    Returns a fully enriched data dictionary, or None if the primary summary fetch fails.
+    Returns a fully enriched data dictionary, or None if primary summary fails.
     """
 
     app_id = application.get("application_id", "Unknown ID")
-    logger.info(f"Enriching data for application: {app_id}")
+    logger.info("Enriching data for application: %s", app_id)
 
     # 1. Fetch and parse the Summary tab (Primary data)
     summary_url = get_tab_url(application, "summary")
     summary_html = fetch_page(session, summary_url)
     if not summary_html:
-        logger.error(f"[{app_id}] Failed to fetch summary page.")
+        logger.error("[%s] Failed to fetch summary page", app_id)
         return None
 
     summary_data = parse_summary_page(summary_html)
@@ -413,7 +418,7 @@ def enrich_application(session: requests.Session, application: Dict[str, str]) -
             details_html)
     else:
         logger.warning(
-            f"[{app_id}] Failed to fetch details page. Defaulting App Type.")
+            "[%s] Failed to fetch details page. Defaulting App Type", app_id)
         summary_data["application_type"] = "N/A"
 
     # 3. Fetch and parse the Documents tab
@@ -424,7 +429,7 @@ def enrich_application(session: requests.Session, application: Dict[str, str]) -
         pdf_data = parse_documents_page(
             documents_html, current_page_url=documents_url)
     else:
-        logger.warning(f"[{app_id}] Failed to fetch documents page.")
+        logger.warning("[%s] Failed to fetch documents page", app_id)
         pdf_data = []
 
     # 4. Compile and return the enriched payload
@@ -440,22 +445,25 @@ def enrich_application(session: requests.Session, application: Dict[str, str]) -
         "pdfs": pdf_data,
     }
 
-    logger.info(f"Successfully enriched application: {app_id}")
+    logger.info("Successfully enriched application: %s", app_id)
     return enriched_app
 
 
-def enrich_applications(session: requests.Session, applications: List[Dict[str, str]]) -> List[Dict[str, Any]]:
+def enrich_applications(
+    session: requests.Session,
+    applications: List[Dict[str, str]]
+) -> List[Dict[str, Any]]:
     """Iterates through application stubs and enriches each one."""
     total = len(applications)
-    logger.info(f"Starting detailed scrape for {total} applications...")
+    logger.info("Starting detailed scrape for %d applications", total)
 
     enriched: List[Dict[str, Any]] = []
     for index, app in enumerate(applications, start=1):
-        logger.debug(f"Processing {index}/{total}...")
+        logger.debug("Processing %d/%d", index, total)
         if result := enrich_application(session, app):
             enriched.append(result)
 
-    logger.info(f"Enrichment complete. {len(enriched)}/{total} succeeded.")
+    logger.info("Enrichment complete. %d/%d succeeded", len(enriched), total)
     return enriched
 
 
@@ -473,13 +481,16 @@ def get_existing_application_ids(conn: Any) -> Set[str]:
         return {row[0] for row in cursor.fetchall()}
 
 
-def filter_new_applications(scraped_apps: List[Dict[str, str]], existing_ids: Set[str]) -> List[Dict[str, str]]:
+def filter_new_applications(
+    scraped_apps: List[Dict[str, str]],
+    existing_ids: Set[str]
+) -> List[Dict[str, str]]:
     """Returns only the applications whose IDs are not already in the database."""
 
     new_apps = [app for app in scraped_apps if app["application_id"]
                 not in existing_ids]
 
-    logger.info(f"Filtered {len(new_apps)} new applications to process.")
+    logger.info("Filtered %d new applications to process", len(new_apps))
     return new_apps
 
 
@@ -496,11 +507,11 @@ def run_scraper(conn: Any) -> List[Dict[str, Any]]:
     session = create_scraper_session()
 
     current_applications = get_current_applications(session)
-    logger.info(f"Total applications scraped: {len(current_applications)}")
+    logger.info("Total applications scraped: %d", len(current_applications))
 
     existing_ids = get_existing_application_ids(conn)
     new_applications = filter_new_applications(
         current_applications, existing_ids)
-    logger.info(f"New applications to enrich: {len(new_applications)}")
+    logger.info("New applications to enrich: %d", len(new_applications))
 
     return enrich_applications(session, new_applications)
