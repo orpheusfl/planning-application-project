@@ -23,8 +23,8 @@ def sample_applications() -> pd.DataFrame:
                 "application_type": "Advertising",
                 "summary": "28-storey mixed-use tower.",
                 "public_interest_score": 5,
-                "additional_notes": "147 objections.",
-                "source_url": "https://example.com/001",
+                "application_page_url": "https://example.com/001",
+                "document_page_url": "https://example.com/docs/001",
             },
             {
                 "application_id": "th-2026-002",
@@ -37,8 +37,8 @@ def sample_applications() -> pd.DataFrame:
                 "application_type": "Full Planning",
                 "summary": "Rear extension.",
                 "public_interest_score": 5,
-                "additional_notes": None,
-                "source_url": "https://example.com/002",
+                "application_page_url": "https://example.com/002",
+                "document_page_url": "https://example.com/docs/002",
             },
             {
                 "application_id": "th-2026-003",
@@ -51,8 +51,8 @@ def sample_applications() -> pd.DataFrame:
                 "application_type": "Full Planning",
                 "summary": "Change of use.",
                 "public_interest_score": 4,
-                "additional_notes": "23 objections.",
-                "source_url": "https://example.com/003",
+                "application_page_url": "https://example.com/003",
+                "document_page_url": None,
             },
             {
                 "application_id": "th-2026-004",
@@ -65,8 +65,8 @@ def sample_applications() -> pd.DataFrame:
                 "application_type": "Full Planning",
                 "summary": "Modular classroom block.",
                 "public_interest_score": 3,
-                "additional_notes": None,
-                "source_url": "https://example.com/004",
+                "application_page_url": "https://example.com/004",
+                "document_page_url": "https://example.com/docs/004",
             },
             {
                 "application_id": "th-2026-005",
@@ -79,46 +79,13 @@ def sample_applications() -> pd.DataFrame:
                 "application_type": "Full Planning",
                 "summary": "Basement swimming pool.",
                 "public_interest_score": 1,
-                "additional_notes": None,
-                "source_url": "https://example.com/005",
+                "application_page_url": "https://example.com/005",
+                "document_page_url": None,
             },
         ]
     )
     df["date"] = pd.to_datetime(df["date"])
     return df
-
-
-@pytest.fixture()
-def sample_documents() -> pd.DataFrame:
-    """Small DataFrame mirroring the schema returned by load_documents()."""
-    return pd.DataFrame(
-        [
-            {
-                "document_id": "doc-001-01",
-                "application_id": "th-2026-001",
-                "document_name": "Design and Access Statement",
-                "document_type": "design_statement",
-                "s3_uri": "s3://bucket/th-2026-001/das.pdf",
-                "source_url": "https://example.com/doc1",
-            },
-            {
-                "document_id": "doc-001-02",
-                "application_id": "th-2026-001",
-                "document_name": "Environmental Impact Assessment",
-                "document_type": "environmental",
-                "s3_uri": "s3://bucket/th-2026-001/eia.pdf",
-                "source_url": "https://example.com/doc2",
-            },
-            {
-                "document_id": "doc-003-01",
-                "application_id": "th-2026-003",
-                "document_name": "Planning Statement",
-                "document_type": "planning_statement",
-                "s3_uri": "s3://bucket/th-2026-003/ps.pdf",
-                "source_url": "https://example.com/doc3",
-            },
-        ]
-    )
 
 
 @pytest.fixture()
