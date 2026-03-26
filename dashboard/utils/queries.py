@@ -53,8 +53,7 @@ DOCUMENTS_SQL = """
         d.document_id,
         d.application_id,
         dt.document_type,
-        REPLACE(INITCAP(REPLACE(dt.document_type, '_', ' ')), ' ', ' ')
-                             AS document_name,
+        INITCAP(REPLACE(dt.document_type, '_', ' ')) AS document_name,
         d.s3_object_key      AS s3_uri,
     FROM document d
     JOIN document_type dt    ON d.document_type_id = dt.document_type_id
