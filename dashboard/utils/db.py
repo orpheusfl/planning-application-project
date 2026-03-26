@@ -21,8 +21,8 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s - %(levelname)s - %(message)s")
 
-SECRET_NAME = os.getenv("SECRET_NAME", "c22-planning-pipeline-db-credentials")
-AWS_REGION = os.getenv("AWS_REGION", "eu-west-2")
+SECRET_NAME = "c22-planning-pipeline-db-credentials"
+AWS_REGION = "eu-west-2"
 
 
 def _get_credentials() -> dict:
@@ -61,6 +61,22 @@ def get_connection():
     """Return a long-lived connection to the Postgres database."""
     creds = _get_credentials()
     ssl_cert = os.getenv("DB_SSL_CERT", "./global-bundle.pem")
+    logging.info(f"Given credentials: {creds}")
+
+    # Validate credentials before attempting connection
+    required_fields = ["host", "port", "dbname", "user", "password"]
+    missing_fields = [field for field in required_fields
+                      if not creds.get(field)]
+
+    if missing_fields:
+        error_msg = (
+            f"Missing database credentials: {', '.join(missing_fields)}. "
+            "For local development, set DB_HOST, DB_PORT, DB_NAME, DB_USER, "
+            "DB_PASSWORD in .env. For ECS, set the SECRET_NAME environment "
+            "variable to access AWS Secrets Manager."
+        )
+        st.error(error_msg)
+        raise ValueError(error_msg)
 
     try:
         conn = psycopg2.connect(
