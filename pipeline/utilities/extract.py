@@ -13,7 +13,7 @@ from urllib.parse import urljoin, urlparse, parse_qs, urlencode, urlunparse
 import requests
 from requests.exceptions import RequestException
 from bs4 import BeautifulSoup
-# REFACTOR: Imported Tag for proper typing of parsed HTML elements
+
 from bs4.element import Tag
 from typing import Any, Dict, List, Optional, Set
 import re
@@ -371,7 +371,7 @@ def fetch_page(session: requests.Session, url: str) -> Optional[str]:
     """
     try:
         response = session.get(url, timeout=10)
-        response.raise_for_status()  # REFACTOR: Automatically catch 4xx/5xx errors
+        response.raise_for_status()
         return response.text
     except RequestException as e:
         logger.error(f"Request failed for URL {url}: {e}")
@@ -502,19 +502,16 @@ def enrich_applications(session: requests.Session, applications: List[Dict[str, 
 
 def get_existing_application_ids(conn: Any) -> Set[str]:
     """Retrieves application IDs already stored in the database as a fast-lookup Set."""
-    # REFACTOR: Added `Any` typehint for the DB connection (or sqlite3.Connection)
-    if conn is None:
-        return set()
 
     with conn.cursor() as cursor:
         cursor.execute("SELECT application_id FROM application")
-        # REFACTOR: Using a set comprehension directly for O(1) lookup speeds later
+
         return {row[0] for row in cursor.fetchall()}
 
 
 def filter_new_applications(scraped_apps: List[Dict[str, str]], existing_ids: Set[str]) -> List[Dict[str, str]]:
     """Returns only the applications whose IDs are not already in the database."""
-    # REFACTOR: Switched existing_ids to a Set and used a list comprehension
+
     new_apps = [app for app in scraped_apps if app["application_id"]
                 not in existing_ids]
 
