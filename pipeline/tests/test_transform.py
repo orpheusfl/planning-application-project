@@ -128,34 +128,58 @@ class TestBuildLlmAnalysisPrompt:
     """Tests for building prompts for LLM analysis."""
 
     def test_happy_path_valid_inputs(self, sample_application):
-        """Build valid prompt from PDF text and description."""
+        """Build valid prompt from PDF text and description with address and postcode."""
         pdf_data = [
             {"document_type": "Planning Statement", "text": "Statement content"},
             {"document_type": "Design & Access", "text": "Design content"}
         ]
 
         result = sample_application.build_llm_analysis_prompt(
-            pdf_data, "Description")
+            pdf_data, "Description", "123 Test Street, London E3 2JP", "E3 2JP")
 
         assert "PLANNING STATEMENT" in result
         assert "DESIGN & ACCESS" in result
         assert "Statement content" in result
         assert "Design content" in result
         assert "summary" in result.lower()
+        assert "123 Test Street, London E3 2JP" in result
+        assert "postcode" in result.lower()
+        assert "inline references" in result.lower() or "source:" in result.lower()
 
     def test_empty_pdf_text_list(self, sample_application):
         """Build prompt when PDF text list is empty."""
         result = sample_application.build_llm_analysis_prompt(
-            [], "Description")
+            [], "Description", "123 Test Street, London E3 2JP", "E3 2JP")
         assert isinstance(result, str)
         assert len(result) > 0
+        assert "123 Test Street, London E3 2JP" in result
 
     def test_single_pdf(self, sample_application):
         """Build prompt with single PDF document."""
         pdf_data = [{"document_type": "Planning", "text": "Content"}]
-        result = sample_application.build_llm_analysis_prompt(pdf_data, "Desc")
+        result = sample_application.build_llm_analysis_prompt(
+            pdf_data, "Desc", "456 Another Road, London W1A 1AA", "W1A 1AA")
         assert "PLANNING" in result
         assert "Content" in result
+        assert "456 Another Road, London W1A 1AA" in result
+
+    def test_incomplete_postcode_instructions(self, sample_application):
+        """Verify prompt includes special instructions for incomplete postcodes."""
+        pdf_data = [{"document_type": "Application", "text": "Details"}]
+        result = sample_application.build_llm_analysis_prompt(
+            pdf_data, "Description", "789 Incomplete Road, London E14", "E14")
+
+        assert "E14" in result
+        assert "incomplete" in result.lower() or "complete" in result.lower()
+
+    def test_complete_postcode_instructions(self, sample_application):
+        """Verify prompt includes verification instructions for complete postcodes."""
+        pdf_data = [{"document_type": "Application", "text": "Details"}]
+        result = sample_application.build_llm_analysis_prompt(
+            pdf_data, "Description", "789 Complete Road, London SW1A 1AA", "SW1A 1AA")
+
+        assert "SW1A 1AA" in result
+        assert "verify" in result.lower()
 
 
 class TestExtractTextFromPdf:
@@ -243,7 +267,7 @@ class TestToDict:
     def test_happy_path_complete_application(self, mock_address, mock_date, mock_pdfs,
                                              sample_application):
         """Convert fully processed application to dictionary."""
-        sample_application.process()
+        sample_application.process(api_key="test_key")
         result = sample_application.to_dict()
 
         assert isinstance(result, dict)
@@ -257,7 +281,7 @@ class TestToDict:
     def test_all_required_fields_present(self, mock_address, mock_date, mock_pdfs,
                                          sample_application):
         """Verify all required fields are in output dictionary."""
-        sample_application.process()
+        sample_application.process(api_key="test_key")
         result = sample_application.to_dict()
 
         required_fields = [
