@@ -48,6 +48,22 @@ Temporary Items
 # End of https://www.toptal.com/developers/gitignore/api/macos,git
 *.db
 
+### Terraform & Secrets ###
+.env
+terraform.tfvars
+terraform.tfvars.example
+terraform/run_init_db.sh
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
+
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
 # dependencies
