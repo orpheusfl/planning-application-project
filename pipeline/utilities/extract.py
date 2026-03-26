@@ -491,7 +491,7 @@ def get_existing_application_ids(conn: Any) -> Set[str]:
         return set()
 
     with conn.cursor() as cursor:
-        cursor.execute("SELECT application_id FROM applications")
+        cursor.execute("SELECT application_id FROM application")
         # REFACTOR: Using a set comprehension directly for O(1) lookup speeds later
         return {row[0] for row in cursor.fetchall()}
 
