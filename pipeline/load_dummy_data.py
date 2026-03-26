@@ -37,13 +37,24 @@ from utilities.load import (  # noqa: E402
 logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s - %(levelname)s - %(message)s')
 
-# ── RDS credentials (from dashboard/.env) ────────────────────
-RDS_HOST = "c22-planning-pipeline-db.c57vkec7dkkx.eu-west-2.rds.amazonaws.com"
-RDS_PORT = 5432
-RDS_USER = "c22_planners"
-RDS_PASSWORD = "password123!"
-RDS_DB_NAME = "planningdata"
+def get_required_env_var(name: str) -> str:
+    """
+    Retrieve a required environment variable.
 
+    Raises a ValueError if the variable is not set or is empty.
+    """
+    value = os.environ.get(name, "").strip()
+    if value:
+        return value
+    msg = f"Environment variable '{name}' must be set and non-empty."
+    raise ValueError(msg)
+
+# ── RDS credentials (from environment) ───────────────────────
+RDS_HOST = get_required_env_var("RDS_HOST")
+RDS_PORT = int(get_required_env_var("RDS_PORT"))
+RDS_USER = get_required_env_var("RDS_USER")
+RDS_PASSWORD = get_required_env_var("RDS_PASSWORD")
+RDS_DB_NAME = get_required_env_var("RDS_DB_NAME")
 # ── Table names (matching rds-init.sql) ──────────────────────
 APPLICATION_TABLE = "application"
 DOCUMENT_TABLE = "document"
