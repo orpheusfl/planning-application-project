@@ -51,5 +51,5 @@ def by_radius(
 def by_application_number(df: pd.DataFrame, query: str) -> pd.DataFrame:
     """Case-insensitive partial match on application number."""
     return df[
-        df["application_number"].str.contains(query, case=False, na=False)
+        df["application_number"].str.contains(query, case=False, na=False, regex=False)
     ]
