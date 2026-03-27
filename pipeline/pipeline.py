@@ -26,7 +26,7 @@ def main():
 
     conn = get_rds_connection(rds_host=DB_HOST, rds_port=DB_PORT, rds_user=DB_USER,
                               rds_password=DB_PASSWORD, rds_db_name=DB_NAME)
-    raw_applications = run_scraper(conn)
+    raw_applications = run_scraper(None)
 
     processed_applications = []
 
@@ -42,13 +42,14 @@ def main():
                               "application_page_url"),
                           document_page_url=raw_app.get("document_page_url")
                           )
+
         app.process(API_KEY)
         processed_applications.append(app.to_dict())
 
-        load_application_data(conn, council_name='Tower Hamlets',
-                              application_info=app.to_dict())
+        # load_application_data(conn, council_name='Tower Hamlets',
+        #                       application_info=app.to_dict())
 
-        if len(processed_applications) > 3:
+        if len(processed_applications) > 20:
             break
 
     print(processed_applications)

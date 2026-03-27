@@ -566,6 +566,8 @@ class Application:
     def _process_pdfs(self, api_key: str) -> None:
         """Extract PDFs, analyze content, and store results."""
         # Create authenticated session once and reuse for both analysis and storage
+        self._filter_pdfs_for_relevance()
+
         session = self._create_authenticated_session()
 
         try:
@@ -601,6 +603,42 @@ class Application:
             raise
         finally:
             self._cleanup_temp_files()
+
+    def _filter_pdfs_for_relevance(self):
+        """Filter PDFs to include only those most relevant for resident-focused summary.
+        Prints out the number of PDFs before and after filtering, and logs the percentage kept.
+        Prints a list of the document types that were removed and kept after filtering for transparency."""
+
+        relevant_types = {'application form',
+                          'design and access statement',
+                          'planning statement',
+                          'consultation summary',
+                          'environmental report'}
+
+        initial_count = len(self._raw_pdfs)
+
+        filtered_pdfs = [
+            pdf for pdf in self._raw_pdfs if pdf['document_type'].lower() in relevant_types]
+        final_count = len(filtered_pdfs)
+
+        if initial_count > 0:
+            percentage_kept = (final_count / initial_count) * 100
+            logger.info(
+                "Filtered PDFs for relevance: kept %s out of %s (%.2f%%)",
+                final_count, initial_count, percentage_kept)
+        else:
+            logger.info("No PDFs to filter for relevance.")
+
+        removed_types = set([pdf['document_type']
+                             for pdf in self._raw_pdfs if pdf['document_type'].lower() not in relevant_types])
+        kept_types = set([pdf['document_type']
+                         for pdf in self._raw_pdfs if pdf['document_type'].lower() in relevant_types])
+
+        if removed_types:
+            logger.info("Removed PDF types: %s Kept PDF types: %s",
+                        ", ".join(removed_types), ", ".join(kept_types))
+
+        self._raw_pdfs = filtered_pdfs
 
     def to_dict(self) -> dict:
         """Convert application data to dictionary ready for database insertion.
