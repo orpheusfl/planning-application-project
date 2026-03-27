@@ -1,10 +1,51 @@
 """Shared test fixtures for pipeline tests."""
 
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 
 from ..utilities.transform import Application
+
+
+# ============================================================================
+# DATABASE FIXTURES
+# ============================================================================
+
+
+@pytest.fixture()
+def mock_conn() -> MagicMock:
+    """Mock psycopg2 connection with a cursor context manager."""
+    conn = MagicMock()
+    cursor = MagicMock()
+    conn.cursor.return_value.__enter__ = MagicMock(return_value=cursor)
+    conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
+    return conn
+
+
+@pytest.fixture()
+def mock_cursor(mock_conn) -> MagicMock:
+    """Shortcut to the mock cursor from mock_conn."""
+    return mock_conn.cursor.return_value.__enter__.return_value
+
+
+@pytest.fixture()
+def sample_application_info() -> dict:
+    """Sample application data matching the expected load schema."""
+    return {
+        "application_number": "PA/26/00142/A1",
+        "validation_date": "2026-03-01",
+        "address": "1-5 Burdett Road, London E3 4TN",
+        "postcode": "E3 4TN",
+        "lat": 51.5248,
+        "long": -0.0345,
+        "ai_summary": "28-storey mixed-use tower.",
+        "public_interest_score": 8,
+        "status_type": "Pending Decision",
+        "application_type": "Advertising",
+        "application_page_url": "https://example.com/001",
+        "document_page_url": "https://example.com/docs/001",
+    }
 
 
 # ============================================================================
