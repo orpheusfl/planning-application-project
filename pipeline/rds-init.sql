@@ -27,7 +27,7 @@ CREATE TABLE subscribers (
     long NUMERIC(10, 7),
     radius_miles NUMERIC(2, 1) DEFAULT 0.5,
     min_interest_score INTEGER DEFAULT 1 
-        CHECK (min_interest_score BETWEEN 1 AND 5),
+        CHECK (min_interest_score BETWEEN 1 AND 10),
     subscribed_at TIMESTAMPTZ DEFAULT NOW(),
     unsubscribed_at TIMESTAMPTZ
 );
