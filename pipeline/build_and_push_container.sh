@@ -14,7 +14,7 @@ aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --
 
 echo "Step 2: Building the Docker image..."
 # This builds the image locally with a friendly name
-docker build -t $REPO_NAME .
+docker build -t $REPO_NAME . --platform linux/amd64
 
 echo "Step 3: Tagging the image for ECR..."
 # This tells Docker exactly where this image belongs in the cloud
