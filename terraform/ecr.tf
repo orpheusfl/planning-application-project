@@ -69,3 +69,39 @@ resource "aws_ecr_lifecycle_policy" "c22-planning-pipeline-lifecycle" {
     ]
   })
 }
+
+# ECR Repository for Notifications Lambda
+resource "aws_ecr_repository" "c22-planning-notifications" {
+  name                 = "c22-planning-notifications"
+  image_tag_mutability = "MUTABLE"
+
+  image_scanning_configuration {
+    scan_on_push = true
+  }
+
+  tags = {
+    Name = "c22-planning-notifications"
+  }
+}
+
+# Lifecycle policy for Notifications (keep last 5 images)
+resource "aws_ecr_lifecycle_policy" "c22-planning-notifications-lifecycle" {
+  repository = aws_ecr_repository.c22-planning-notifications.name
+
+  policy = jsonencode({
+    rules = [
+      {
+        rulePriority = 1
+        description  = "Keep last 5 images"
+        selection = {
+          tagStatus     = "any"
+          countType     = "imageCountMoreThan"
+          countNumber   = 5
+        }
+        action = {
+          type = "expire"
+        }
+      }
+    ]
+  })
+}

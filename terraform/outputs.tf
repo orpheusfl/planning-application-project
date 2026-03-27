@@ -29,6 +29,21 @@ output "pipeline_ecr_repository_uri" {
   value       = aws_ecr_repository.c22-planning-pipeline.repository_url
 }
 
+output "notifications_ecr_repository_uri" {
+  description = "ECR repository URI for the notifications Lambda image"
+  value       = aws_ecr_repository.c22-planning-notifications.repository_url
+}
+
+output "notifications_lambda_arn" {
+  description = "ARN of the notifications Lambda function"
+  value       = aws_lambda_function.c22-planning-notifications.arn
+}
+
+output "notifications_lambda_function_name" {
+  description = "Name of the notifications Lambda function"
+  value       = aws_lambda_function.c22-planning-notifications.function_name
+}
+
 output "s3_name" {
   description = "Name of the S3 bucket"
   value       = aws_s3_bucket.c22-planning-s3.id
