@@ -439,8 +439,38 @@ class Application:
         cookies, csrf_token = self._get_browser_cookies(url)
         return self._build_session_from_cookies(cookies, csrf_token)
 
+    def _perform_pdf_download(self, session: requests.Session, url: str) -> Path:
+        """Perform the actual PDF download and save to disk.
+
+        Args:
+            session: Authenticated requests.Session
+            url: URL to the PDF file
+
+        Returns:
+            Path to the downloaded PDF file
+
+        Raises:
+            requests.exceptions.HTTPError: If HTTP error occurs
+            requests.exceptions.RequestException: If request fails
+        """
+        response = session.get(url, stream=True, verify=False, timeout=10)
+        response.raise_for_status()
+
+        pdf_filename = url.split('/')[-1]
+        pdf_path = self._temp_dir / pdf_filename
+
+        bytes_downloaded = 0
+        with open(pdf_path, 'wb') as f:
+            for chunk in response.iter_content(chunk_size=8192):
+                f.write(chunk)
+                bytes_downloaded += len(chunk)
+
+        logger.info(
+            "PDF downloaded successfully (%s bytes) to %s", bytes_downloaded, pdf_path)
+        return pdf_path
+
     def _download_pdf(self, session: requests.Session, url: str) -> Path | None:
-        """Download PDF using an authenticated session.
+        """Download PDF using an authenticated session with retry logic.
 
         Args:
             session: Authenticated requests.Session
@@ -450,38 +480,47 @@ class Application:
             Path to the downloaded PDF file, or None if unavailable
         """
         logger.info("Downloading PDF from: %s", url)
-        try:
-            response = session.get(url, stream=True, verify=False)
-            response.raise_for_status()
+        max_retries = 3
+        base_delay = 1
 
-            pdf_filename = url.split('/')[-1]
-            pdf_path = self._temp_dir / pdf_filename
-
-            bytes_downloaded = 0
-            with open(pdf_path, 'wb') as f:
-                for chunk in response.iter_content(chunk_size=8192):
-                    f.write(chunk)
-                    bytes_downloaded += len(chunk)
-
-            logger.info(
-                "PDF downloaded successfully (%s bytes) to %s", bytes_downloaded, pdf_path)
-            return pdf_path
-        except requests.exceptions.HTTPError as e:
-            if e.response.status_code == 404:
-                logger.warning("PDF not found (404): %s", url)
-                return None
-            if e.response.status_code == 403:
-                logger.warning("PDF access forbidden (403): %s", url)
-                return None
-            logger.error("HTTP error downloading PDF: %s", e, exc_info=True)
-            raise
-        except requests.exceptions.RequestException as e:
-            logger.error(
-                "HTTP request error downloading PDF: %s", e, exc_info=True)
-            raise
-        except Exception as e:
-            logger.error("Error downloading PDF: %s", e, exc_info=True)
-            raise
+        for attempt in range(max_retries):
+            try:
+                return self._perform_pdf_download(session, url)
+            except requests.exceptions.HTTPError as e:
+                if e.response.status_code == 404:
+                    logger.warning("PDF not found (404): %s", url)
+                    return None
+                if e.response.status_code == 403:
+                    logger.warning("PDF access forbidden (403): %s", url)
+                    return None
+                if attempt < max_retries - 1:
+                    delay = base_delay * (2 ** attempt)
+                    logger.warning(
+                        "HTTP error downloading PDF (attempt %s/%s): %s. Retrying in %s seconds...",
+                        attempt + 1, max_retries, e, delay)
+                    time.sleep(delay)
+                else:
+                    logger.error(
+                        "HTTP error downloading PDF after %s attempts: %s", max_retries, e, exc_info=True)
+                    raise
+            except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
+                if attempt < max_retries - 1:
+                    delay = base_delay * (2 ** attempt)
+                    logger.warning(
+                        "Temporary network error downloading PDF (attempt %s/%s): %s. Retrying in %s seconds...",
+                        attempt + 1, max_retries, e, delay)
+                    time.sleep(delay)
+                else:
+                    logger.error(
+                        "Network error downloading PDF after %s attempts: %s", max_retries, e, exc_info=True)
+                    raise
+            except requests.exceptions.RequestException as e:
+                logger.error(
+                    "HTTP request error downloading PDF: %s", e, exc_info=True)
+                raise
+            except Exception as e:
+                logger.error("Error downloading PDF: %s", e, exc_info=True)
+                raise
 
     def pdf_urls_to_analysis(self, pdfs: list[dict], session: requests.Session, api_key: str) -> dict:
         """Complete pipeline: extract PDFs, extract text, clean, analyze, and return results.
