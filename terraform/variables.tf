@@ -52,7 +52,7 @@ variable "council_dim_table" {
   
 }
 
-variable "status_type_dim" {
+variable "status_dim_table" {
   description = "Name of the RDS table for the status types"
   type        = string
   default     = "status_type"
