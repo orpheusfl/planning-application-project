@@ -85,8 +85,6 @@ def get_connection():
             dbname=creds["dbname"],
             user=creds["user"],
             password=creds["password"],
-            sslmode="verify-full",
-            sslrootcert=ssl_cert,
         )
         logging.info("Successfully connected to database.")
         return conn

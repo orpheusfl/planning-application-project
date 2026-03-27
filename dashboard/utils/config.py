@@ -1,4 +1,12 @@
-"""Shared constants and CSS for the Planning Watchdog dashboard."""
+"""Shared constants and CSS for the OpenPlan dashboard."""
+
+# ---------------------------------------------------------------------------
+# Brand
+# ---------------------------------------------------------------------------
+BRAND_BLUE = "#1800ad"
+BRAND_ORANGE = "#ff751f"
+BRAND_WHITE = "#ffffff"
+LOGO_PATH = "openplan-logo.svg"
 
 # ---------------------------------------------------------------------------
 # Map defaults
@@ -24,6 +32,7 @@ RADIUS_CIRCLE_SEGMENTS = 64
 
 # ---------------------------------------------------------------------------
 # Visual mapping — public interest score → colour
+# Gradient from brand blue (#1800ad) through to brand orange (#ff751f)
 # ---------------------------------------------------------------------------
 SCORE_COLORS: dict[int, list[int]] = {
     1: [156, 163, 175, 160],
@@ -54,31 +63,48 @@ STATUS_CSS_CLASSES: dict[str, str] = {
 # ---------------------------------------------------------------------------
 CSS = """
 <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+    html, body, [class*="css"] {
+        font-family: 'Inter', sans-serif;
+    }
+
     .block-container { padding-top: 1rem; }
+
+    h1, h2, h3, h4, h5, h6 {
+        font-family: 'Inter', sans-serif;
+        font-weight: 700;
+    }
+
+    a { color: #1800ad; }
+    a:hover { color: #ff751f; }
 
     .status-badge {
         display: inline-block; padding: 4px 12px; border-radius: 12px;
+        font-family: 'Inter', sans-serif;
         font-size: 13px; font-weight: 600;
     }
     .status-pending      { background: #FEF3C7; color: #92400E; }
-    .status-consultation { background: #DBEAFE; color: #1E40AF; }
+    .status-consultation { background: #DBEAFE; color: #1800ad; }
     .status-approved     { background: #D1FAE5; color: #065F46; }
     .status-refused      { background: #FEE2E2; color: #991B1B; }
 
     .score-pill {
-        display: inline-block; width: 28px; height: 28px; border-radius: 50%;
+        display: inline-block; min-width: 28px; height: 28px;
+        padding: 0 6px; border-radius: 14px;
         text-align: center; line-height: 28px; font-weight: 700;
-        font-size: 14px; color: white;
+        font-family: 'Inter', sans-serif;
+        font-size: 13px; color: white;
     }
-    .score-1 { background: #9CA3AF; }
-    .score-2 { background: #868C98; }
-    .score-3 { background: #6B7280; }
-    .score-4 { background: #B4A028; }
-    .score-5 { background: #F59E0B; }
-    .score-6 { background: #F3781E; }
-    .score-7 { background: #EF5830; }
-    .score-8 { background: #EF4444; }
-    .score-9 { background: #DC3232; }
+    .score-1  { background: #9CA3AF; }
+    .score-2  { background: #868C98; }
+    .score-3  { background: #6B7280; }
+    .score-4  { background: #B4A028; }
+    .score-5  { background: #F59E0B; }
+    .score-6  { background: #F3781E; }
+    .score-7  { background: #EF5830; }
+    .score-8  { background: #EF4444; }
+    .score-9  { background: #DC3232; }
     .score-10 { background: #B91C1C; }
 
     .doc-card {
@@ -86,6 +112,7 @@ CSS = """
         border-radius: 8px; margin-bottom: 6px;
     }
     .doc-type {
+        font-family: 'Inter', sans-serif;
         font-size: 11px; color: #6B7280;
         text-transform: uppercase; letter-spacing: 0.5px;
     }
