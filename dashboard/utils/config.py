@@ -12,6 +12,8 @@ MAP_STYLE = "https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json"
 # ---------------------------------------------------------------------------
 SCROLL_OFFSET_PX = 770
 SCROLL_DELAY_MS = 500
+CLUSTER_LIST_HEADER_PX = 197
+CLUSTER_LIST_ITEM_PX = 56
 SEARCH_RESULTS_LIMIT = 10
 
 # ---------------------------------------------------------------------------
@@ -24,11 +26,16 @@ RADIUS_CIRCLE_SEGMENTS = 64
 # Visual mapping — public interest score → colour
 # ---------------------------------------------------------------------------
 SCORE_COLORS: dict[int, list[int]] = {
-    1: [156, 163, 175, 180],
-    2: [107, 114, 128, 180],
-    3: [245, 158, 11, 200],
-    4: [239, 68, 68, 220],
-    5: [220, 38, 38, 240],
+    1: [156, 163, 175, 160],
+    2: [134, 140, 152, 170],
+    3: [107, 114, 128, 180],
+    4: [180, 160, 40, 190],
+    5: [245, 158, 11, 200],
+    6: [243, 120, 30, 210],
+    7: [239, 88, 48, 220],
+    8: [239, 68, 68, 230],
+    9: [220, 50, 50, 240],
+    10: [185, 28, 28, 250],
 }
 DEFAULT_MARKER_COLOR = [156, 163, 175, 180]
 
@@ -64,10 +71,15 @@ CSS = """
         font-size: 14px; color: white;
     }
     .score-1 { background: #9CA3AF; }
-    .score-2 { background: #6B7280; }
-    .score-3 { background: #F59E0B; }
-    .score-4 { background: #EF4444; }
-    .score-5 { background: #DC2626; }
+    .score-2 { background: #868C98; }
+    .score-3 { background: #6B7280; }
+    .score-4 { background: #B4A028; }
+    .score-5 { background: #F59E0B; }
+    .score-6 { background: #F3781E; }
+    .score-7 { background: #EF5830; }
+    .score-8 { background: #EF4444; }
+    .score-9 { background: #DC3232; }
+    .score-10 { background: #B91C1C; }
 
     .doc-card {
         padding: 8px 12px; border: 1px solid #E5E7EB;
