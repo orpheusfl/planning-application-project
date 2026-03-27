@@ -91,6 +91,7 @@ resource "aws_ecs_service" "c22-planning-dashboard" {
   depends_on = [
     aws_db_instance.pipeline-planning-db,
     aws_iam_role_policy.c22-planning-ecs-secrets-role-policy,
-    aws_iam_role_policy.c22-planning-execution-s3-policy
+    aws_iam_role_policy.c22-planning-execution-s3-policy,
+    aws_iam_role_policy.c22-planning-ecs-task-secrets-policy
   ]
 }
