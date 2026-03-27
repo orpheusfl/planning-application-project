@@ -145,7 +145,7 @@ def load_application_to_rds(conn, table_name: str, application_data: dict,
                     lat, long, ai_summary, public_interest_score,
                     council_id, status_type_id, application_type_id,
                     application_page_url, document_page_url
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING application_id
             """
             cursor.execute(insert_query, (
@@ -206,7 +206,7 @@ def load_application_data(conn, council_name: str,
         The application_info dict should contain:
         - application_number, validation_date, address, postcode, lat, long,
           ai_summary, public_interest_score, status_type, application_type,
-          application_page_url, document_page_url, documents (list of dicts with file_path, document_type)
+          application_page_url, document_page_url
         This function will validate the environment variables, retrieve necessary foreign key ids,
         and then load the application data to the RDS.
     """

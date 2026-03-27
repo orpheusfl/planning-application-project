@@ -383,6 +383,13 @@ def get_current_applications(session: requests.Session) -> List[Dict[str, str]]:
                 f"No applications found on page {page}. Ending pagination.")
             break
 
+        if len(extracted_apps) > 10:
+            break
+
+        # comment out later
+        if page > 1:
+            break
+
         applications.extend(extracted_apps)
         page += 1
 
@@ -476,7 +483,7 @@ def get_existing_application_ids(conn: Any) -> Set[str]:
     """Retrieves application IDs already stored in the database as a fast-lookup Set."""
 
     with conn.cursor() as cursor:
-        cursor.execute("SELECT application_id FROM application")
+        cursor.execute("SELECT application_number FROM application")
 
         return {row[0] for row in cursor.fetchall()}
 

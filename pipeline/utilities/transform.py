@@ -13,6 +13,7 @@ from pathlib import Path
 import fitz  # PyMuPDF
 import openai
 import requests
+from bs4 import BeautifulSoup
 from dateutil import parser as date_parser
 from dotenv import load_dotenv
 from selenium import webdriver
@@ -26,6 +27,23 @@ load_dotenv()  # Load environment variables from .env file
 POSTCODE_REGEX = r"\b[A-Z]{1,2}\d[A-Z\d]?\s?\d[A-Z]{2}\b"
 
 
+def extract_csrf_token(html_content: str) -> str | None:
+    """Extract CSRF security token from HTML.
+
+    Args:
+        html_content: HTML content to search for token
+
+    Returns:
+        CSRF token value or None if not found
+    """
+    soup = BeautifulSoup(html_content, "html.parser")
+    csrf_input = soup.find("input", {"name": "_csrf"})
+
+    if csrf_input and isinstance(csrf_input.get("value"), str):
+        return csrf_input.get("value")
+    return None
+
+
 class Application:
     """Represents a processed planning application with validated and enriched data."""
 
@@ -37,7 +55,7 @@ class Application:
                  validation_date: str,
                  status: str,
                  pdfs: list[dict],
-                 application_url: str | None = None,
+                 application_page_url: str | None = None,
                  document_page_url: str | None = None) -> None:
         """Initialize with raw input data. Call process() to transform and enrich.
 
@@ -49,7 +67,7 @@ class Application:
             validation_date: Date of validation as string (e.g., "Fri 20 Mar 2026")
             status: Current status of the application
             pdfs: List of dicts with 'pdf_url' and 'document_type' keys
-            application_url: Optional URL to the application details page for
+            application_page_url: Optional URL to the application details page for
             establishing session context
             document_page_url: Optional URL to the document page for the application
         """
@@ -60,10 +78,9 @@ class Application:
         self.validation_date: datetime | None = None
         self.status = status
         self.ai_summary: str | None = None
-        self.application_url = application_url
+        self.application_page_url = application_page_url
         self.document_page_url = document_page_url
         self.public_interest_score: int | None = None
-        self.pdfs: list[dict] | None = None
 
         # Process and store address (no network calls)
         address_data = self.format_address(address)
@@ -214,7 +231,7 @@ class Application:
                     know (housing units, density, public amenities, traffic impact, affordable
                     housing percentage, environmental concerns). CRITICAL: Include inline references
                     directly within the summary text showing exactly which PDF section each fact came from.
-                    Use the format: "...specific detail (source: [DOCUMENT TYPE], page X)..." embedded
+                    Use the format: "...specific detail (<document_type>, page X)..." embedded
                     throughout the summary. For example: "The scheme includes 500 units of housing
                     (source: Application Form, page 2) with 25% affordable housing (source: Design Report, page 5)..."
                     2. "public_interest_score": An integer from 1-10 assessing public interest level
@@ -343,32 +360,47 @@ class Application:
             logger.error("Parsed JSON: %s", result)
             raise ValueError(f"LLM response missing required field: {str(e)}")
 
-    def _get_browser_cookies(self, url: str) -> list[dict]:
+    def _get_browser_cookies(self, url: str) -> tuple[list[dict], str | None]:
         """Retrieve cookies from browser after navigating to URL.
 
         Args:
             url: URL to navigate to in the browser
 
         Returns:
-            List of cookie dictionaries from the browser
+            Tuple of (cookies list, csrf_token string or None)
         """
         driver = webdriver.Chrome()
         try:
             driver.get(url)
-            time.sleep(5)  # Wait for cookies to be set
+            time.sleep(10)  # Wait longer for authentication to complete
             logger.info("Authenticated session established with browser")
+
+            # Extract and log CSRF token for verification
+            page_source = driver.page_source
+            csrf_token = extract_csrf_token(page_source)
+            if csrf_token:
+                logger.info("CSRF token found: %s", csrf_token[:20] + "...")
+            else:
+                logger.warning("No CSRF token found in page")
 
             cookies = driver.get_cookies()
             logger.info("Retrieved %s cookies from Selenium", len(cookies))
-            return cookies
+            for cookie in cookies:
+                logger.debug("Cookie: %s = %s (domain: %s)",
+                             cookie.get('name'),
+                             cookie.get('value')[
+                                 :20] + '...' if len(str(cookie.get('value', ''))) > 20 else cookie.get('value'),
+                             cookie.get('domain'))
+            return cookies, csrf_token
         finally:
             driver.quit()
 
-    def _build_session_from_cookies(self, cookies: list[dict]) -> requests.Session:
+    def _build_session_from_cookies(self, cookies: list[dict], csrf_token: str | None = None) -> requests.Session:
         """Create authenticated requests session with provided cookies.
 
         Args:
             cookies: List of cookie dictionaries to add to the session
+            csrf_token: Optional CSRF token to include in session headers
 
         Returns:
             Configured requests.Session with cookies and headers
@@ -378,6 +410,14 @@ class Application:
         session.headers.update({
             'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
         })
+
+        # Add CSRF token to headers if available
+        if csrf_token:
+            session.headers.update({
+                'X-CSRF-Token': csrf_token,
+                '_csrf': csrf_token
+            })
+            logger.debug("CSRF token added to session headers")
 
         for cookie in cookies:
             session.cookies.set(
@@ -393,11 +433,11 @@ class Application:
         """Create and return an authenticated requests session using Selenium.
 
         Returns:
-            Authenticated requests.Session with cookies from browser
+            Authenticated requests.Session with cookies and CSRF token from browser
         """
         url = self.document_page_url or 'https://development.towerhamlets.gov.uk/'
-        cookies = self._get_browser_cookies(url)
-        return self._build_session_from_cookies(cookies)
+        cookies, csrf_token = self._get_browser_cookies(url)
+        return self._build_session_from_cookies(cookies, csrf_token)
 
     def _download_pdf(self, session: requests.Session, url: str) -> Path | None:
         """Download PDF using an authenticated session.
@@ -430,6 +470,9 @@ class Application:
             if e.response.status_code == 404:
                 logger.warning("PDF not found (404): %s", url)
                 return None
+            if e.response.status_code == 403:
+                logger.warning("PDF access forbidden (403): %s", url)
+                return None
             logger.error("HTTP error downloading PDF: %s", e, exc_info=True)
             raise
         except requests.exceptions.RequestException as e:
@@ -457,7 +500,6 @@ class Application:
         logger.info("Starting PDF analysis pipeline for %s PDFs", len(pdfs))
 
         pdf_texts = []
-        stored_pdfs = []
 
         for idx, pdf in enumerate(pdfs, 1):
             logger.info(
@@ -475,10 +517,6 @@ class Application:
                 pdf_texts.append({
                     'document_type': pdf['document_type'],
                     'text': cleaned_text
-                })
-                stored_pdfs.append({
-                    'document_type': pdf['document_type'],
-                    'pdf_data': pdf_path
                 })
                 logger.info(
                     "Successfully processed %s", pdf['document_type'])
@@ -501,8 +539,7 @@ class Application:
         return {
             'ai_summary': analysis['ai_summary'],
             'public_interest_score': analysis['public_interest_score'],
-            'postcode': analysis['postcode'],
-            'pdfs': stored_pdfs
+            'postcode': analysis['postcode']
         }
 
     def _cleanup_temp_files(self) -> None:
@@ -536,7 +573,6 @@ class Application:
                 self._raw_pdfs, session, api_key)
             self.ai_summary = pdf_analysis['ai_summary']
             self.public_interest_score = pdf_analysis['public_interest_score']
-            self.pdfs = pdf_analysis['pdfs']
 
             # Update postcode with LLM-validated version if provided
             if pdf_analysis.get('postcode'):
@@ -549,7 +585,8 @@ class Application:
         """Transform and enrich raw input data. Call this after __init__ to populate all fields."""
 
         logger.info(
-            "Starting process pipeline for application %s", self.application_number)
+            "Starting process pipeline for application %s - Application URL: %s | Document URL: %s",
+            self.application_number, self.application_page_url, self.document_page_url)
         try:
             logger.info("Processing validation date...")
             self._process_validation_date()
@@ -581,10 +618,11 @@ class Application:
             'lat': self.lat,
             'long': self.long,
             'validation_date': self.validation_date,
-            'status': self.status,
+            'status_type': self.status,
             'ai_summary': self.ai_summary,
             'public_interest_score': self.public_interest_score,
-            'pdfs': self.pdfs
+            'application_page_url': self.application_page_url,
+            'document_page_url': self.document_page_url
         }
 
 
@@ -608,7 +646,7 @@ if __name__ == "__main__":
                 'document_type': 'Correspondence'
             }
         ],
-        application_url="https://development.towerhamlets.gov.uk/online-applications/applicationDetails.do?activeTab=summary&keyVal=DCAPR_150275",
+        application_page_url="https://development.towerhamlets.gov.uk/online-applications/applicationDetails.do?activeTab=summary&keyVal=DCAPR_150275",
         document_page_url="https://development.towerhamlets.gov.uk/online-applications/applicationDetails.do?activeTab=documents&keyVal=DCAPR_150275"
     )
 

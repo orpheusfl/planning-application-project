@@ -15,14 +15,13 @@ BEGIN;
 -- ==========================================================================
 -- 1. Councils
 -- ==========================================================================
-INSERT INTO council (council_id, council_name) VALUES
-    ('Tower Hamlets')
-ON CONFLICT (council_id) DO NOTHING;
+INSERT INTO council (council_name) VALUES
+    ('Tower Hamlets');
 
 -- ==========================================================================
 -- 2. Status types
 -- ==========================================================================
-INSERT INTO status_type (status_type_id, status_type) VALUES
+INSERT INTO status_type (status_type) VALUES
     ('Appeal Decided'),
     ('Appeal Lodged'),
     ('Awaiting Decision'),
@@ -30,7 +29,7 @@ INSERT INTO status_type (status_type_id, status_type) VALUES
     ('Received'),
     ('Registered'),
     ('Withdrawn'),
-    ('Unknown')
-ON CONFLICT (status_type_id) DO NOTHING;
+    ('Unknown');
+
 
 COMMIT;
