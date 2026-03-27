@@ -228,14 +228,19 @@ class Application:
 
         prompt = f"""Analyze this planning application and return a JSON response with three fields:
                     1. "summary": A 2-3 sentence summary highlighting key details residents need to
-                    know (housing units, density, public amenities, traffic impact, affordable
+                    know (housing units, effects on neighboring property value, public amenities, traffic impact, transport links, affordable
                     housing percentage, environmental concerns). CRITICAL: Include inline references
                     directly within the summary text showing exactly which PDF section each fact came from.
                     Use the format: "...specific detail (<document_type>, page X)..." embedded
                     throughout the summary. For example: "The scheme includes 500 units of housing
                     (source: Application Form, page 2) with 25% affordable housing (source: Design Report, page 5)..."
-                    2. "public_interest_score": An integer from 1-10 assessing public interest level
-                    3. "postcode": The complete and correct UK postcode for this application. {postcode_instructions}
+                    2. "public_interest_score": An integer from 1-10 assessing public interest level. 
+                    The public interest score should be the average of 5 sub-scores (each 1-10) 
+                    for: a) scale of development
+                        b) positive impact on local area, such as improving local amenities like a leisure centre or park or transport links
+                        c) level of controversy in the documents, especially if there is concern for cultural/historical sites, or significant opposition from local residents.
+                        d) environmental impact, especially if there are concerns about green space, pollution, or sustainability
+                        e) affordable housing provision, with higher scores for more affordable housing
 
                     Respond ONLY with valid JSON, no additional text.
 
