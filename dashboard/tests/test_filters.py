@@ -84,18 +84,18 @@ class TestByMinScore:
         result = by_min_score(sample_applications, 1)
         assert len(result) == len(sample_applications)
 
-    def test_min_score_5_returns_only_top(self, sample_applications):
-        result = by_min_score(sample_applications, 5)
-        assert all(result["public_interest_score"] >= 5)
-        assert len(result) == 2  # Two apps with score 5
+    def test_min_score_8_returns_only_top(self, sample_applications):
+        result = by_min_score(sample_applications, 8)
+        assert all(result["public_interest_score"] >= 8)
+        assert len(result) == 2  # Two apps with score 8 and 9
 
-    def test_min_score_4_filters_low_scores(self, sample_applications):
-        result = by_min_score(sample_applications, 4)
-        assert all(result["public_interest_score"] >= 4)
-        assert len(result) == 3  # Two 5s and one 4
+    def test_min_score_6_filters_low_scores(self, sample_applications):
+        result = by_min_score(sample_applications, 6)
+        assert all(result["public_interest_score"] >= 6)
+        assert len(result) == 3  # Scores 9, 8, and 6
 
     def test_min_score_above_max_returns_empty(self, sample_applications):
-        result = by_min_score(sample_applications, 6)
+        result = by_min_score(sample_applications, 11)
         assert result.empty
 
     def test_result_preserves_columns(self, sample_applications):
