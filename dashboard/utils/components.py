@@ -46,11 +46,16 @@ def _status_badge(status: str) -> str:
     return f'<span class="status-badge {css_class}">{status}</span>'
 
 
-def _score_pill(score) -> str:
-    """Return an HTML pill for the public interest score (1–10)."""
+def _score_pill(score, text: str | None = None) -> str:
+    """Return an HTML pill for the public interest score (1–10).
+
+    If text is provided, it's displayed in the pill. Otherwise, the score is shown.
+    """
     if pd.isna(score):
         return ""
-    return f'<span class="score-pill score-{int(score)}">{int(score)}</span>'
+    score_int = int(float(score))
+    display_text = text if text else str(score_int)
+    return f'<span class="score-pill score-{score_int}">{display_text}</span>'
 
 
 def marker_color(score) -> list[int]:
@@ -669,21 +674,19 @@ def render_detail(application: pd.Series) -> None:
             f"**Status** {_status_badge(application['status'])}",
             unsafe_allow_html=True,
         )
-    with col_score:
-        st.markdown(
-            f"**Interest** {_score_pill(application['public_interest_score'])}",
-            unsafe_allow_html=True,
-        )
-
-    # Date & application link
-    col_date, col_link = st.columns(2)
-    with col_date:
-        st.markdown(f"**Date:** {application['date'].strftime('%d %B %Y')}")
-    with col_link:
         if application["application_page_url"]:
             st.markdown(
                 f"[View on council website ↗]({application['application_page_url']})"
             )
+    with col_score:
+        score = application['public_interest_score']
+        st.markdown(
+            f"**Interest Score** {_score_pill(score, f'{int(score)}/10')}",
+            unsafe_allow_html=True,
+        )
+
+    # Date
+    st.markdown(f"**Date:** {application['date'].strftime('%d %B %Y')}")
 
     # AI summary
     st.markdown("#### Summary")

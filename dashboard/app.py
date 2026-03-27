@@ -7,6 +7,7 @@ and per-application detail views including AI summaries and documents.
 """
 
 import streamlit as st
+import pandas as pd
 
 from utils.components import (
     build_cluster_map_data,
@@ -34,6 +35,37 @@ st.set_page_config(
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
+def _handle_search_selection() -> None:
+    """Clear map selections when user clicked a search result."""
+    st.session_state.pop("map_selected_app_id", None)
+    st.session_state.pop("map_selected_postcode", None)
+
+
+def _show_single_app_detail(filtered_df: pd.DataFrame, selected_app: pd.Series) -> None:
+    """Display a single application selected from map or search."""
+    st.session_state.pop("search_selected_id", None)
+    st.session_state.pop("search_query", None)
+    st.session_state.pop("_cluster_scroll_offset", None)
+    render_search_bar(filtered_df, suppress_results=True)
+    render_detail(selected_app)
+
+
+def _show_cluster_detail(filtered_df: pd.DataFrame, selected_postcode: str) -> None:
+    """Display applications in a postcode cluster."""
+    render_search_bar(filtered_df, suppress_results=True)
+    cluster_pick = render_cluster_list(selected_postcode, filtered_df)
+    if cluster_pick is not None:
+        render_detail(cluster_pick)
+
+
+def _show_search_results(filtered_df: pd.DataFrame) -> None:
+    """Display search bar with results when no map selection."""
+    st.session_state.pop("_cluster_scroll_offset", None)
+    search_result = render_search_bar(filtered_df)
+    if search_result is not None:
+        render_detail(search_result)
+
+
 def main() -> None:
     """Entry point for the Planning Watchdog dashboard."""
     st.markdown(CSS, unsafe_allow_html=True)
@@ -58,30 +90,16 @@ def main() -> None:
     source = st.session_state.get("_interaction_source")
 
     if source == "search":
-        # User last clicked a search result — search wins
+        _handle_search_selection()
         selected_app = None
         selected_postcode = None
-        st.session_state.pop("map_selected_app_id", None)
-        st.session_state.pop("map_selected_postcode", None)
 
     if selected_app is not None:
-        # Single application selected — show detail directly
-        st.session_state.pop("search_selected_id", None)
-        st.session_state.pop("_cluster_scroll_offset", None)
-        render_search_bar(filtered_df, suppress_results=True)
-        render_detail(selected_app)
+        _show_single_app_detail(filtered_df, selected_app)
     elif selected_postcode is not None:
-        # Cluster selected — show list of applications in this postcode
-        render_search_bar(filtered_df, suppress_results=True)
-        cluster_pick = render_cluster_list(selected_postcode, filtered_df)
-        if cluster_pick is not None:
-            render_detail(cluster_pick)
+        _show_cluster_detail(filtered_df, selected_postcode)
     else:
-        # No map selection — show search bar with results
-        st.session_state.pop("_cluster_scroll_offset", None)
-        search_result = render_search_bar(filtered_df)
-        if search_result is not None:
-            render_detail(search_result)
+        _show_search_results(filtered_df)
 
 
 if __name__ == "__main__":
