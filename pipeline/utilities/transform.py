@@ -241,7 +241,10 @@ class Application:
                         c) level of controversy in the documents, especially if there is concern for cultural/historical sites, or significant opposition from local residents.
                         d) environmental impact, especially if there are concerns about green space, pollution, or sustainability
                         e) affordable housing provision, with higher scores for more affordable housing
-
+                    3. "postcode": The complete and correct UK postcode for this application.
+                    {postcode_instructions}
+                
+                        
                     Respond ONLY with valid JSON, no additional text.
 
                     Original Application Description:
