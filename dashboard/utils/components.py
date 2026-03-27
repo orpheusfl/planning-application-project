@@ -1,6 +1,7 @@
 """Reusable Streamlit UI components for the Planning Watchdog dashboard."""
 
 import logging
+from datetime import datetime, timedelta
 
 import streamlit as st
 import streamlit.components.v1 as components
@@ -10,6 +11,8 @@ import pydeck as pdk
 from . import filters
 from .config import (
     CSS,
+    CLUSTER_LIST_HEADER_PX,
+    CLUSTER_LIST_ITEM_PX,
     DEFAULT_MARKER_COLOR,
     MAP_STYLE,
     MAP_ZOOM,
@@ -43,11 +46,16 @@ def _status_badge(status: str) -> str:
     return f'<span class="status-badge {css_class}">{status}</span>'
 
 
-def _score_pill(score) -> str:
-    """Return an HTML pill for the public interest score (1–5)."""
+def _score_pill(score, text: str | None = None) -> str:
+    """Return an HTML pill for the public interest score (1–10).
+
+    If text is provided, it's displayed in the pill. Otherwise, the score is shown.
+    """
     if pd.isna(score):
         return ""
-    return f'<span class="score-pill score-{int(score)}">{int(score)}</span>'
+    score_int = int(float(score))
+    display_text = text if text else str(score_int)
+    return f'<span class="score-pill score-{score_int}">{display_text}</span>'
 
 
 def marker_color(score) -> list[int]:
@@ -55,6 +63,66 @@ def marker_color(score) -> list[int]:
     if pd.isna(score):
         return DEFAULT_MARKER_COLOR
     return SCORE_COLORS.get(int(score), DEFAULT_MARKER_COLOR)
+
+
+def _cluster_marker_color(group: pd.DataFrame) -> list[int]:
+    """Return the colour for a cluster based on the highest interest score."""
+    max_score = group["public_interest_score"].max()
+    return marker_color(max_score)
+
+
+def build_cluster_map_data(df: pd.DataFrame) -> pd.DataFrame:
+    """Group applications by postcode into one map marker per location.
+
+    Returns a DataFrame with one row per postcode containing:
+    - lat/long (mean of all applications in the cluster)
+    - cluster_count (number of applications)
+    - color (based on highest interest score in the cluster)
+    - tooltip_text (application info for singles, count for clusters)
+    - postcode
+    - application_id, application_number, address, status (for single-app clusters)
+    """
+    if df.empty:
+        return pd.DataFrame()
+
+    clusters = []
+    for postcode, group in df.groupby("postcode"):
+        count = len(group)
+        color = _cluster_marker_color(group)
+
+        if count == 1:
+            row = group.iloc[0]
+            tooltip = (
+                f"<b>{row['application_number']}</b><br/>"
+                f"{row['address']}<br/>"
+                f"<i>{row['status']}</i>"
+            )
+            clusters.append({
+                "postcode": postcode,
+                "lat": row["lat"],
+                "long": row["long"],
+                "cluster_count": 1,
+                "color": color,
+                "tooltip_text": tooltip,
+                "application_id": row["application_id"],
+            })
+        else:
+            tooltip = (
+                f"<b>{count} applications in this area</b><br/>"
+                f"{postcode}<br/>"
+                f"<i>Click to view all</i>"
+            )
+            clusters.append({
+                "postcode": postcode,
+                "lat": group["lat"].mean(),
+                "long": group["long"].mean(),
+                "cluster_count": count,
+                "color": color,
+                "tooltip_text": tooltip,
+                "application_id": None,
+            })
+
+    return pd.DataFrame(clusters)
 
 
 # ---------------------------------------------------------------------------
@@ -81,7 +149,7 @@ def _show_subscribe_dialog() -> None:
     email = st.text_input("Email address", placeholder="you@example.com")
     postcode = st.text_input("Your postcode", placeholder="e.g. E1 4TT")
     radius = st.slider("Radius (miles)", 0.1, 2.0, 0.5, step=0.1)
-    min_score = st.slider("Minimum interest score", 1, 5, 1)
+    min_score = st.slider("Minimum interest score", 1, 10, 1)
     consent = st.checkbox("I agree to receive weekly email updates")
 
     # Check for existing subscriptions after the main form fields
@@ -229,9 +297,14 @@ def render_sidebar(
     # Date range
     min_date = df["date"].min().date()
     max_date = df["date"].max().date()
+    days_in_data = (max_date - min_date).days
+    if days_in_data >= 7:
+        default_start = (datetime.now() - timedelta(days=7)).date()
+    else:
+        default_start = min_date
     date_range = st.sidebar.date_input(
         "Filter by date",
-        value=(min_date, max_date),
+        value=(default_start, max_date),
         min_value=min_date,
         max_value=max_date,
     )
@@ -244,7 +317,7 @@ def render_sidebar(
     df = filters.by_status(df, selected_status)
 
     # Interest score
-    min_score = st.sidebar.slider("Minimum interest score", 1, 5, 1)
+    min_score = st.sidebar.slider("Minimum interest score", 1, 10, 1)
     df = filters.by_min_score(df, min_score)
 
     # Location
@@ -295,6 +368,10 @@ def render_sidebar(
     if filter_fingerprint != st.session_state.get("_filter_fingerprint"):
         st.session_state["_filter_fingerprint"] = filter_fingerprint
         st.session_state.pop("map_selected_app_id", None)
+        st.session_state.pop("map_selected_postcode", None)
+        st.session_state.pop("cluster_selected_app_id", None)
+        st.session_state.pop("_last_map_event", None)
+        st.session_state.pop("_interaction_source", None)
         st.session_state["_filters_changed"] = True
     else:
         st.session_state["_filters_changed"] = False
@@ -359,9 +436,7 @@ def render_map(df: pd.DataFrame, location_info: dict | None = None):
     )
 
     tooltip = {
-        "html": (
-            "<b>{application_number}</b><br/>{address}<br/><i>{status}</i>"
-        ),
+        "html": "{tooltip_text}",
         "style": {
             "backgroundColor": "#1F2937",
             "color": "white",
@@ -384,11 +459,20 @@ def render_map(df: pd.DataFrame, location_info: dict | None = None):
     )
 
 
-def get_selected_from_map(event, df: pd.DataFrame) -> pd.Series | None:
-    """Extract the selected application from a pydeck selection event.
+def get_selected_from_map(
+    event, cluster_df: pd.DataFrame, applications: pd.DataFrame,
+) -> tuple[pd.Series | None, str | None, bool]:
+    """Determine what the user clicked on the map.
 
-    The selection is persisted in ``st.session_state`` so it survives the
-    transient nature of pydeck events (they only fire on the click rerun).
+    Returns ``(application, selected_postcode, is_fresh_click)``:
+
+    * Single-app marker clicked → ``(app_series, None, True)``
+    * Cluster marker clicked    → ``(None, postcode_str, True)``
+    * Persisted selection        → ``(app_or_none, postcode_or_none, False)``
+    * Nothing selected          → ``(None, None, False)``
+
+    The selection is persisted in ``st.session_state`` so it survives
+    the transient nature of pydeck events.
     """
     filters_changed = st.session_state.get("_filters_changed", False)
 
@@ -396,20 +480,98 @@ def get_selected_from_map(event, df: pd.DataFrame) -> pd.Series | None:
         indices = event.selection.get("indices", {}).get("applications", [])
         if indices:
             idx = indices[0]
-            if idx < len(df):
-                app = df.iloc[idx]
-                st.session_state["map_selected_app_id"] = app[
-                    "application_id"
-                ]
-                return app
+            # Only treat as fresh if this is a new click, not a replayed one
+            event_key = ("map_click", idx)
+            already_processed = (
+                st.session_state.get("_last_map_event") == event_key
+            )
+            if not already_processed and idx < len(cluster_df):
+                st.session_state["_last_map_event"] = event_key
+                st.session_state["_interaction_source"] = "map"
+                clicked = cluster_df.iloc[idx]
+                if clicked["cluster_count"] == 1:
+                    # Single application — select it directly
+                    app_id = clicked["application_id"]
+                    st.session_state["map_selected_app_id"] = app_id
+                    st.session_state.pop("map_selected_postcode", None)
+                    match = applications[
+                        applications["application_id"] == app_id
+                    ]
+                    if not match.empty:
+                        return match.iloc[0], None, True
+                else:
+                    # Cluster — store the postcode
+                    postcode = clicked["postcode"]
+                    st.session_state["map_selected_postcode"] = postcode
+                    st.session_state.pop("map_selected_app_id", None)
+                    return None, postcode, True
 
-    # Fall back to previously persisted selection
+    # Fall back to persisted single-app selection
     if "map_selected_app_id" in st.session_state:
         app_id = st.session_state["map_selected_app_id"]
-        match = df[df["application_id"] == app_id]
+        match = applications[applications["application_id"] == app_id]
         if not match.empty:
-            return match.iloc[0]
+            return match.iloc[0], None, False
         del st.session_state["map_selected_app_id"]
+
+    # Fall back to persisted cluster selection
+    if "map_selected_postcode" in st.session_state:
+        return None, st.session_state["map_selected_postcode"], False
+
+    return None, None, False
+
+
+def render_cluster_list(
+    postcode: str, applications: pd.DataFrame,
+) -> pd.Series | None:
+    """Render a list of applications in a postcode cluster.
+
+    Returns the selected application if the user clicks one,
+    otherwise ``None``.
+    """
+    cluster_apps = applications[applications["postcode"] == postcode]
+    if cluster_apps.empty:
+        return None
+
+    cluster_offset = (
+        CLUSTER_LIST_HEADER_PX + CLUSTER_LIST_ITEM_PX * len(cluster_apps)
+    )
+    _scroll_to_detail(postcode, extra_offset=cluster_offset)
+    st.markdown("---")
+    st.subheader(f"📍 {len(cluster_apps)} applications in {postcode}")
+    st.caption("Select an application to view details.")
+
+    # Render all application buttons in the cluster
+    for _, row in cluster_apps.iterrows():
+        label = (
+            f"{row['application_number']} — {row['address'][:60]}  "
+            f"({row['status']})"
+        )
+        if st.button(
+            label,
+            key=f"cluster_{row['application_id']}",
+            use_container_width=True,
+        ):
+            st.session_state["cluster_selected_app_id"] = (
+                row["application_id"]
+            )
+            st.session_state["_interaction_source"] = "cluster"
+            st.rerun()
+
+    # Return the previously selected application (after buttons are rendered)
+    if "cluster_selected_app_id" in st.session_state:
+        selected_id = st.session_state["cluster_selected_app_id"]
+        match = cluster_apps[
+            cluster_apps["application_id"] == selected_id
+        ]
+        if not match.empty:
+            cluster_offset = (
+                CLUSTER_LIST_HEADER_PX
+                + CLUSTER_LIST_ITEM_PX * len(cluster_apps)
+            )
+            st.session_state["_cluster_scroll_offset"] = cluster_offset
+            _scroll_to_detail(selected_id, extra_offset=cluster_offset)
+            return match.iloc[0]
 
     return None
 
@@ -469,6 +631,7 @@ def render_search_bar(
             key=row["application_id"],
         ):
             st.session_state["search_selected_id"] = row["application_id"]
+            st.session_state["_interaction_source"] = "search"
             st.rerun()
 
     if query and matches.empty:
@@ -480,14 +643,15 @@ def render_search_bar(
 # ---------------------------------------------------------------------------
 # Application detail panel
 # ---------------------------------------------------------------------------
-def _scroll_to_detail(application_id: str) -> None:
+def _scroll_to_detail(anchor_id: str, extra_offset: int = 0) -> None:
     """Inject JS to auto-scroll past the map to the detail panel."""
+    total_offset = SCROLL_OFFSET_PX + extra_offset
     components.html(
         f"""<script>
-            // {application_id}
+            // {anchor_id}
             setTimeout(function() {{
                 window.parent.document.querySelector('section.stMain')
-                    .scrollTop = {SCROLL_OFFSET_PX};
+                    .scrollTop = {total_offset};
             }}, {SCROLL_DELAY_MS});
         </script>""",
         height=0,
@@ -496,7 +660,8 @@ def _scroll_to_detail(application_id: str) -> None:
 
 def render_detail(application: pd.Series) -> None:
     """Render the full detail panel for a selected application."""
-    _scroll_to_detail(application["application_id"])
+    extra_offset = st.session_state.get("_cluster_scroll_offset", 0)
+    _scroll_to_detail(application["application_id"], extra_offset=extra_offset)
     st.markdown("---")
 
     # Header row
@@ -509,21 +674,19 @@ def render_detail(application: pd.Series) -> None:
             f"**Status** {_status_badge(application['status'])}",
             unsafe_allow_html=True,
         )
-    with col_score:
-        st.markdown(
-            f"**Interest** {_score_pill(application['public_interest_score'])}",
-            unsafe_allow_html=True,
-        )
-
-    # Date & application link
-    col_date, col_link = st.columns(2)
-    with col_date:
-        st.markdown(f"**Date:** {application['date'].strftime('%d %B %Y')}")
-    with col_link:
         if application["application_page_url"]:
             st.markdown(
                 f"[View on council website ↗]({application['application_page_url']})"
             )
+    with col_score:
+        score = application['public_interest_score']
+        st.markdown(
+            f"**Interest Score** {_score_pill(score, f'{int(score)}/10')}",
+            unsafe_allow_html=True,
+        )
+
+    # Date
+    st.markdown(f"**Date:** {application['date'].strftime('%d %B %Y')}")
 
     # AI summary
     st.markdown("#### Summary")
