@@ -2,7 +2,9 @@
 
 import os
 import logging
+import base64
 from dataclasses import dataclass
+from pathlib import Path
 
 import boto3
 import pandas as pd
@@ -25,6 +27,22 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 SENDER_EMAIL = os.getenv("SENDER_EMAIL", "noreply@planningwatchdog.co.uk")
+LOGO_PATH = Path(__file__).parent / "OpenPlan_Logo.png"
+
+
+def get_logo_base64() -> str:
+    """Loads the logo and converts it to base64 data URI.
+
+    Returns:
+        Base64 encoded data URI for the logo
+    """
+    if not LOGO_PATH.exists():
+        logger.warning("Logo file not found at %s", LOGO_PATH)
+        return ""
+
+    with open(LOGO_PATH, "rb") as f:
+        logo_data = base64.b64encode(f.read()).decode("utf-8")
+    return f"data:image/png;base64,{logo_data}"
 
 
 @dataclass
@@ -52,10 +70,11 @@ def format_application_html(application: dict) -> str:
     description = application.get("description", "No description available")
     score = application.get("public_interest_score", "N/A")
     postcode = application.get("postcode_right", "N/A")
+    url = application.get("application_page_url", "#")
 
     return f"""
     <div style="border: 1px solid #e5e7eb; padding: 16px; margin: 12px 0; border-radius: 4px;">
-        <h3 style="margin: 0 0 8px 0; color: #1f2937;">{app_id}</h3>
+        <h3 style="margin: 0 0 8px 0; color: #1f2937;"><a href="{url}" target="_blank" rel="noopener noreferrer">{app_id}</a></h3>
         <p style="margin: 4px 0; color: #4b5563;"><strong>Description:</strong> {description}</p>
         <p style="margin: 4px 0; color: #4b5563;"><strong>Interest Score:</strong> {score}/10</p>
         <p style="margin: 4px 0; color: #4b5563;"><strong>Location:</strong> {postcode}</p>
@@ -75,6 +94,7 @@ def create_email_html(applications: list[dict]) -> str:
     application_html = "".join(format_application_html(app)
                                for app in applications)
     application_count = len(applications)
+    print(applications)
 
     return f"""
     <html>
@@ -82,7 +102,9 @@ def create_email_html(applications: list[dict]) -> str:
         <style>
             body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
             .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
-            .header {{ background-color: #1f2937; color: white; padding: 20px; border-radius: 4px 4px 0 0; }}
+            .header {{ background-color: #FF751F; color: white; padding: 20px; border-radius: 4px 4px 0 0; display: flex; justify-content: space-between; align-items: center; }}
+            .header-text {{ flex: 1; }}
+            .header-logo {{ flex-shrink: 0; margin-left: 20px; }}
             .content {{ background-color: #f9fafb; padding: 20px; border-radius: 0 0 4px 4px; }}
             .footer {{ text-align: center; margin-top: 20px; font-size: 12px; color: #6b7280; }}
         </style>
@@ -90,14 +112,18 @@ def create_email_html(applications: list[dict]) -> str:
     <body>
         <div class="container">
             <div class="header">
-                <h1 style="margin: 0;">Open Plan</h1>
-                <p style="margin: 8px 0 0 0;">New Applications Matching Your Preferences</p>
+                <div class="header-text">
+                    <p style="margin: 8px 0 0 0;">New Applications Matching Your Preferences</p>
+                </div>
+                <div class="header-logo">
+                    <img src="{get_logo_base64()}" alt="Open Plan logo" style="max-height: 60px;">
+                </div>
             </div>
             <div class="content">
                 <p>Hi,</p>
                 <p>We found <strong>{application_count}</strong> new planning application(s) matching your preferences:</p>
                 {application_html}
-                <p style="margin-top: 20px; color: #6b7280; font-size: 14px;">
+                <p style="margin-top: 20px; color: black; font-size: 14px;">
                     Review these applications and manage your preferences in the Open Plan dashboard.
                 </p>
             </div>
@@ -156,7 +182,7 @@ def group_applications_by_user(matched_df: pd.DataFrame) -> dict[str, list[dict]
     for email, group in grouped:
         applications = group[
             ["application_id", "description",
-                "public_interest_score", "postcode_right"]
+                "public_interest_score", "postcode_right", "application_page_url"]
         ].to_dict("records")
         user_applications[email] = applications
 
@@ -273,12 +299,10 @@ def generate_and_send_emails(
 
     users_gdf = convert_df_to_gdf(users_df)
     applications_gdf = convert_df_to_gdf(applications_df)
-    print(users_gdf)
-    print(applications_gdf)
+
 
     matched_df = match_applications_to_users(users_gdf, applications_gdf)
     print(matched_df)
-
     if matched_df.empty:
         logger.info("No matching applications found for any users")
         return {
@@ -305,7 +329,8 @@ if __name__ == "__main__":
             "long": -0.0520,
             "public_interest_score": 7,
             "description": "Residential development",
-            "postcode": "SW1A 1AA"
+            "postcode": "SW1A 1AA",
+            "application_page_url": "https://development.towerhamlets.gov.uk/online-applications/applicationDetails.do?keyVal=DCAPR_150302&activeTab=summary"
         },
         {
             "application_id": "PA/25/00234/S",
@@ -313,7 +338,8 @@ if __name__ == "__main__":
             "long": -0.0570,
             "public_interest_score": 5,
             "description": "Office conversion",
-            "postcode": "NW1 4AB"
+            "postcode": "NW1 4AB",
+            "application_page_url": "https://development.towerhamlets.gov.uk/online-applications/applicationDetails.do?keyVal=DCAPR_150306&activeTab=summary"
         },
         {
             "application_id": "PA/25/00143/NC",
@@ -321,7 +347,8 @@ if __name__ == "__main__":
             "long": -0.1020,
             "public_interest_score": 4,
             "description": "Retail space",
-            "postcode": "EC1A 1BB"
+            "postcode": "EC1A 1BB",
+            "application_page_url": "https://development.towerhamlets.gov.uk/online-applications/applicationDetails.do?keyVal=DCAPR_150307&activeTab=summary"
         },
         {
             "application_id": "PA/25/00063/S",
@@ -329,7 +356,8 @@ if __name__ == "__main__":
             "long": 0.0000,
             "public_interest_score": 8,
             "description": "Large commercial project",
-            "postcode": "E1 6AN"
+            "postcode": "E1 6AN",
+            "application_page_url": "https://development.towerhamlets.gov.uk/online-applications/applicationDetails.do?keyVal=DCAPR_150302&activeTab=summary"
         },
     ]
     print(generate_and_send_emails(
