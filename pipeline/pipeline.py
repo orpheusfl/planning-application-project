@@ -23,6 +23,7 @@ DB_PASSWORD = os.getenv("DB_PASSWORD")
 
 
 def main():
+
     conn = get_rds_connection(rds_host=DB_HOST, rds_port=DB_PORT, rds_user=DB_USER,
                               rds_password=DB_PASSWORD, rds_db_name=DB_NAME)
     raw_applications = run_scraper(conn)

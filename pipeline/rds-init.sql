@@ -4,28 +4,22 @@
 -- 1. Create Independent/Reference Tables
 -- ==========================================
 
-DROP TABLE IF EXISTS application CASCADE;
-DROP TABLE IF EXISTS council CASCADE;
-DROP TABLE IF EXISTS status_type CASCADE;
-DROP TABLE IF EXISTS application_type CASCADE;
-DROP TABLE IF EXISTS subscribers CASCADE;
-
-CREATE TABLE council (
+CREATE TABLE IF NOT EXISTS council (
     council_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     council_name VARCHAR(255) NOT NULL
 );
 
-CREATE TABLE status_type (
+CREATE TABLE IF NOT EXISTS status_type (
     status_type_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     status_type VARCHAR(100) NOT NULL
 );
 
-CREATE TABLE application_type (
+CREATE TABLE IF NOT EXISTS application_type (
     application_type_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     application_type VARCHAR(100) NOT NULL
 );
 
-CREATE TABLE subscribers (
+CREATE TABLE IF NOT EXISTS subscribers (
     subscriber_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     email VARCHAR(255) NOT NULL,
     postcode VARCHAR(10) NOT NULL,
@@ -42,7 +36,7 @@ CREATE TABLE subscribers (
 -- 2. Create Dependent Tables
 -- ==========================================
 
-CREATE TABLE application (
+CREATE TABLE IF NOT EXISTS application (
     application_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     council_id BIGINT NOT NULL,
     status_type_id BIGINT NOT NULL,
