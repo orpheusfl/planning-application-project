@@ -8,16 +8,6 @@ resource "aws_cloudwatch_log_group" "ecs-dashboard" {
   }
 }
 
-# CloudWatch Log Group for Lambda Pipeline
-resource "aws_cloudwatch_log_group" "lambda-pipeline" {
-  name              = "/aws/lambda/c22-planning-pipeline"
-  retention_in_days = 7
-
-  tags = {
-    Name = "c22-planning-pipeline-logs"
-  }
-}
-
 # CloudWatch Log Group for RDS PostgreSQL
 resource "aws_cloudwatch_log_group" "rds-postgres" {
   name              = "/aws/rds/instance/c22-planning-db/postgres"
