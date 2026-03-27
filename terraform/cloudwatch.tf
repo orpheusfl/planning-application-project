@@ -28,6 +28,16 @@ resource "aws_cloudwatch_log_group" "rds-postgres" {
   }
 }
 
+# CloudWatch Log Group for ECS Pipeline
+resource "aws_cloudwatch_log_group" "ecs-pipeline" {
+  name              = "/ecs/c22-planning-pipeline"
+  retention_in_days = 7
+
+  tags = {
+    Name = "c22-planning-pipeline-logs"
+  }
+}
+
 # CloudWatch Log Group for Glue Crawler (optional, for future use)
 resource "aws_cloudwatch_log_group" "glue-crawler" {
   name              = "/aws/glue/crawlers/c22-planning-crawler"
