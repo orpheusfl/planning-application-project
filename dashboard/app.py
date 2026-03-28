@@ -1,5 +1,5 @@
 """
-Planning Watchdog — Tower Hamlets Dashboard
+OpenPlan — Tower Hamlets Dashboard
 
 Streamlit dashboard for browsing planning applications in Tower Hamlets.
 Displays applications on an interactive map with filtering, search,
@@ -26,8 +26,8 @@ from utils.queries import load_applications
 # Page config — must be the first Streamlit command
 # ---------------------------------------------------------------------------
 st.set_page_config(
-    page_title="Planning Watchdog — Tower Hamlets",
-    page_icon="🏗️",
+    page_title="OpenPlan — Tower Hamlets",
+    page_icon="openplan-favicon.png",
     layout="wide",
 )
 
@@ -67,7 +67,7 @@ def _show_search_results(filtered_df: pd.DataFrame) -> None:
 
 
 def main() -> None:
-    """Entry point for the Planning Watchdog dashboard."""
+    """Entry point for the OpenPlan dashboard."""
     st.markdown(CSS, unsafe_allow_html=True)
 
     applications = load_applications()

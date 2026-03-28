@@ -1,4 +1,4 @@
-"""Reusable Streamlit UI components for the Planning Watchdog dashboard."""
+"""Reusable Streamlit UI components for the OpenPlan dashboard."""
 
 import logging
 from datetime import datetime, timedelta
@@ -14,6 +14,7 @@ from .config import (
     CLUSTER_LIST_HEADER_PX,
     CLUSTER_LIST_ITEM_PX,
     DEFAULT_MARKER_COLOR,
+    LOGO_PATH,
     MAP_STYLE,
     MAP_ZOOM,
     SCORE_COLORS,
@@ -288,8 +289,8 @@ def render_sidebar(
     *location_info* is a dict with ``lat``, ``lon``, ``radius_miles`` when a
     postcode filter is active, otherwise ``None``.
     """
-    st.sidebar.title("🏗️ Planning Watchdog")
-    st.sidebar.caption("Tower Hamlets applications")
+    st.sidebar.image(LOGO_PATH, width=220)
+    st.sidebar.caption("Tower Hamlets planning applications")
 
     df = applications.copy()
     location_info = None
