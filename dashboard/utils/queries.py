@@ -1,4 +1,4 @@
-"""Database queries for the Planning Watchdog dashboard.
+"""Database queries for the OpenPlan dashboard.
 
 Replaces the hardcoded dummy_data module with live SQL queries against the
 RDS database.  Column aliases match the names the dashboard components expect.
