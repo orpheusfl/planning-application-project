@@ -151,7 +151,7 @@ def _show_subscribe_dialog() -> None:
     email = st.text_input("Email address", placeholder="you@example.com")
     postcode = st.text_input("Your postcode", placeholder="e.g. E1 4TT")
     radius = st.slider("Radius (miles)", 0.1, 2.0, 0.5, step=0.1)
-    min_score = st.slider("Minimum interest score", 1, 10, 1)
+    min_score = st.slider("Minimum interest score", 1, 5, 1)
     consent = st.checkbox("I agree to receive weekly email updates")
 
     # Check for existing subscriptions after the main form fields
@@ -320,10 +320,10 @@ def render_sidebar(
 
     # Interest score
     min_score = st.sidebar.slider(
-        "Minimum interest score", 1, 10, 1,
-        help="The interest score is the average of the five micro-interest "
-             "scores: Scale, Local Impact, Controversy, Environment, and "
-             "Housing. Use this to filter out applications below a certain "
+        "Minimum interest score", 1, 5, 1,
+        help="The interest score is the average of the four micro-interest "
+             "scores: Disturbance, Scale, Housing, and Environment. "
+             "Use this to filter out applications below a certain "
              "overall interest level.",
     )
     df = filters.by_min_score(df, min_score)
@@ -332,7 +332,7 @@ def render_sidebar(
     with st.sidebar.expander("Filter by micro-interests"):
         for sub in SUB_SCORES:
             min_sub = st.slider(
-                sub["label"], 1, 10, 1, key=f"sub_{sub['column']}"
+                sub["label"], 1, 5, 1, key=f"sub_{sub['column']}"
             )
             if min_sub > 1:
                 df = filters.by_min_sub_score(df, sub["column"], min_sub)
@@ -698,7 +698,7 @@ def render_detail(application: pd.Series) -> None:
     with col_score:
         score = application['public_interest_score']
         st.markdown(
-            f"**Interest Score** {_score_pill(score, f'{int(score)}/10')}",
+            f"**Interest Score** {_score_pill(score, f'{int(score)}/5')}",
             unsafe_allow_html=True,
         )
 
@@ -714,7 +714,7 @@ def render_detail(application: pd.Series) -> None:
             for sub in SUB_SCORES:
                 sub_val = int(application.get(sub["column"], 0))
                 st.markdown(
-                    f"{sub['label']}: {_score_pill(sub_val, f'{sub_val}/10')}",
+                    f"{sub['label']}: {_score_pill(sub_val, f'{sub_val}/5')}",
                     unsafe_allow_html=True,
                 )
 

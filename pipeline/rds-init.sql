@@ -51,7 +51,6 @@ CREATE TABLE IF NOT EXISTS application (
     public_interest_score SMALLINT,
     score_scale SMALLINT,
     score_disturbance SMALLINT,
-    score_controversy SMALLINT,
     score_environment SMALLINT,
     score_housing SMALLINT,
     application_page_url TEXT,

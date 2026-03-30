@@ -85,18 +85,18 @@ class TestByMinScore:
         result = by_min_score(sample_applications, 1)
         assert len(result) == len(sample_applications)
 
-    def test_min_score_8_returns_only_top(self, sample_applications):
-        result = by_min_score(sample_applications, 8)
-        assert all(result["public_interest_score"] >= 8)
-        assert len(result) == 2  # Two apps with score 8 and 9
+    def test_min_score_5_returns_only_top(self, sample_applications):
+        result = by_min_score(sample_applications, 5)
+        assert all(result["public_interest_score"] >= 5)
+        assert len(result) == 1  # One app with score 5
 
-    def test_min_score_6_filters_low_scores(self, sample_applications):
-        result = by_min_score(sample_applications, 6)
-        assert all(result["public_interest_score"] >= 6)
-        assert len(result) == 3  # Scores 9, 8, and 6
+    def test_min_score_3_filters_low_scores(self, sample_applications):
+        result = by_min_score(sample_applications, 3)
+        assert all(result["public_interest_score"] >= 3)
+        assert len(result) == 4  # Scores 5, 3, 4, and 3
 
     def test_min_score_above_max_returns_empty(self, sample_applications):
-        result = by_min_score(sample_applications, 11)
+        result = by_min_score(sample_applications, 6)
         assert result.empty
 
     def test_result_preserves_columns(self, sample_applications):
@@ -173,20 +173,15 @@ class TestByMinSubScore:
     def test_filters_by_scale(self, sample_applications):
         result = by_min_sub_score(sample_applications, "score_scale", 4)
         assert all(result["score_scale"] >= 4)
-        assert len(result) == 2  # scores 10 and 4
-
-    def test_filters_by_controversy(self, sample_applications):
-        result = by_min_sub_score(sample_applications, "score_controversy", 8)
-        assert all(result["score_controversy"] >= 8)
-        assert len(result) == 2  # scores 9 and 8
+        assert len(result) == 2  # scores 5 and 4
 
     def test_filters_by_housing(self, sample_applications):
-        result = by_min_sub_score(sample_applications, "score_housing", 10)
+        result = by_min_sub_score(sample_applications, "score_housing", 5)
         assert len(result) == 1
         assert result.iloc[0]["application_id"] == "th-2026-001"
 
     def test_above_max_returns_empty(self, sample_applications):
-        result = by_min_sub_score(sample_applications, "score_environment", 11)
+        result = by_min_sub_score(sample_applications, "score_environment", 6)
         assert result.empty
 
     def test_missing_column_returns_all(self, sample_applications):

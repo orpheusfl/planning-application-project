@@ -28,7 +28,6 @@ APPLICATIONS_SQL = """
         a.public_interest_score,
         COALESCE(a.score_scale, 0)        AS score_scale,
         COALESCE(a.score_disturbance, 0)  AS score_disturbance,
-        COALESCE(a.score_controversy, 0)  AS score_controversy,
         COALESCE(a.score_environment, 0)  AS score_environment,
         COALESCE(a.score_housing, 0)      AS score_housing,
         a.application_page_url,
