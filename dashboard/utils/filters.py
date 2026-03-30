@@ -3,7 +3,6 @@
 import numpy as np
 import pandas as pd
 
-from .geo import haversine_miles
 
 
 def by_date(df: pd.DataFrame, start_date, end_date) -> pd.DataFrame:
@@ -48,8 +47,10 @@ def by_radius(
     dlat = np.radians(df["lat"].values - lat)
     dlon = np.radians(df["long"].values - lon)
 
-    a = np.sin(dlat / 2) ** 2 + np.cos(lat1) * \
-        np.cos(lat2) * np.sin(dlon / 2) ** 2
+    a = (
+        np.sin(dlat / 2) ** 2
+        + np.cos(lat1) * np.cos(lat2) * np.sin(dlon / 2) ** 2
+    )
     distances = 2 * EARTH_RADIUS_MILES * np.arcsin(np.sqrt(a))
 
     return df[distances <= radius_miles]
