@@ -237,7 +237,7 @@ class Application:
         postcode_instructions = self._get_postcode_instructions(
             postcode=incomplete_postcode)
 
-        prompt = f"""Analyze this planning application and return a JSON response with eight fields:
+        prompt = f"""Analyze this planning application and return a JSON response with seven fields:
                     1. "summary": A 2-3 sentence summary highlighting key details residents need to
                     know (housing units, effects on neighboring property value, public amenities, traffic impact, transport links, affordable
                     housing percentage, environmental concerns). CRITICAL: Include inline references
@@ -250,9 +250,7 @@ class Application:
                     4. "score_controversy": Level of controversy (1–10): Likelihood of public opposition based on historical patterns. 1 = routine like-for-like replacement. 5 = loss of green space or community facility. 10 = demolition of heritage building, displacement of residents.
                     5. "score_environment": Environmental impact (1–10): Impact on air quality, green space, biodiversity, flooding. 1 = no environmental change. 5 = removal of a few trees, minor drainage changes. 10 = building on floodplain, large-scale tree removal, significant emissions increase.
                     6. "score_housing": Housing impact (1–10): Estimated effect on local housing market. 1 = no effect. 5 = new small residential block, moderate supply change. 10 = large estate redevelopment likely to shift local prices significantly.
-                    7. "public_interest_score": An integer from 1-10 assessing public interest level. 
-                    The public interest score should be the mean average of sub-scores (each 1-10): "score_scale", "score_disturbance", "score_controversy", "score_environment", and "score_housing". Calculate this average and round to the nearest whole number.
-                    8. "postcode": The complete and correct UK postcode for this application.
+                    7. "postcode": The complete and correct UK postcode for this application.
                     {postcode_instructions}
                 
                         
@@ -275,7 +273,7 @@ Use UK English and be concise, but using full sentences. Avoid generic statement
 and focus on specific details that would be relevant to local residents.
 
 Return format:
-{{"summary": "...", "public_interest_score": <number>, "postcode": "..."}}"""
+{{"summary": "...", "score_scale": <number>, "score_disturbance": <number>, "score_controversy": <number>, "score_environment": <number>, "score_housing": <number>, "postcode": "..."}}"""
         return prompt
 
     def _get_postcode_instructions(self, postcode: str) -> str:
@@ -375,9 +373,18 @@ Return format:
             raise ValueError(f"Invalid JSON from LLM: {str(e)}") from e
 
         try:
+            sub_scores = [
+                result['score_scale'],
+                result['score_disturbance'],
+                result['score_controversy'],
+                result['score_environment'],
+                result['score_housing'],
+            ]
+            public_interest_score = round(sum(sub_scores) / len(sub_scores))
+
             return {
                 'ai_summary': result['summary'],
-                'public_interest_score': result['public_interest_score'],
+                'public_interest_score': public_interest_score,
                 'score_scale': result['score_scale'],
                 'score_disturbance': result['score_disturbance'],
                 'score_controversy': result['score_controversy'],
