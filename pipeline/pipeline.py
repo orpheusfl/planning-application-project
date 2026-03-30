@@ -13,6 +13,7 @@ from dotenv import load_dotenv
 from utilities.extract import run_scraper
 from utilities.transform import Application
 from utilities.load import get_rds_connection, load_application_data
+from user_notifications.generate_emails import generate_and_send_emails
 
 
 def main():
@@ -71,6 +72,8 @@ def main():
 
         if len(processed_applications) > 20:
             break
+
+    generate_and_send_emails(processed_applications)
 
 
 if __name__ == "__main__":
