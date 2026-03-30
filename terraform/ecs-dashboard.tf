@@ -77,9 +77,9 @@ resource "aws_ecs_service" "c22-planning-dashboard" {
   launch_type     = "FARGATE"
 
   network_configuration {
-    subnets          = data.aws_subnets.pipeline-private-subnets.ids
+    subnets          = data.aws_subnets.public_subnets.ids
     security_groups  = [aws_security_group.c22-planning-ecs-sg.id]
-    assign_public_ip = false
+    assign_public_ip = true
   }
 
   load_balancer {
@@ -91,6 +91,7 @@ resource "aws_ecs_service" "c22-planning-dashboard" {
   depends_on = [
     aws_db_instance.pipeline-planning-db,
     aws_iam_role_policy.c22-planning-ecs-secrets-role-policy,
-    aws_iam_role_policy.c22-planning-execution-s3-policy
+    aws_iam_role_policy.c22-planning-execution-s3-policy,
+    aws_iam_role_policy.c22-planning-ecs-task-secrets-policy
   ]
 }

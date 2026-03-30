@@ -1,5 +1,7 @@
 """Shared constants and CSS for the OpenPlan dashboard."""
 
+from pathlib import Path
+
 # ---------------------------------------------------------------------------
 # Brand
 # ---------------------------------------------------------------------------
@@ -11,8 +13,8 @@ LOGO_PATH = "openplan-logo.svg"
 # ---------------------------------------------------------------------------
 # Map defaults
 # ---------------------------------------------------------------------------
-TOWER_HAMLETS_CENTER = {"latitude": 51.5200, "longitude": -0.0500}
-MAP_ZOOM = 13
+LONDON_CENTER = {"latitude": 51.5074, "longitude": -0.1278}
+MAP_ZOOM = 10
 MAP_STYLE = "https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json"
 
 # ---------------------------------------------------------------------------
@@ -23,6 +25,11 @@ SCROLL_DELAY_MS = 500
 CLUSTER_LIST_HEADER_PX = 197
 CLUSTER_LIST_ITEM_PX = 56
 SEARCH_RESULTS_LIMIT = 10
+
+# ---------------------------------------------------------------------------
+# Council boundary data
+# ---------------------------------------------------------------------------
+BOUNDARIES_DIR = Path(__file__).resolve().parent.parent / "boundaries"
 
 # ---------------------------------------------------------------------------
 # Sub-score (micro-interest) definitions
