@@ -802,7 +802,10 @@ def render_detail(application: pd.Series) -> None:
     if has_sub_scores:
         with st.expander("Interest score breakdown"):
             for sub in SUB_SCORES:
-                sub_val = int(application.get(sub["column"], 0))
+                raw_value = application.get(sub["column"])
+                if pd.isna(raw_value) or raw_value <= 0:
+                    continue
+                sub_val = int(raw_value)
                 st.markdown(
                     f"{sub['label']}: {_score_pill(sub_val, f'{sub_val}/10')}",
                     unsafe_allow_html=True,
