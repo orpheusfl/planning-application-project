@@ -74,8 +74,10 @@ class Application:
         self.public_interest_score: int | None = None
 
         # Process and store address (no network calls)
-        self.address = Application.format_address_by_removing_postcode(address)
+
         self.postcode = Application.extract_postcode_from_address(address)
+        self.address = Application.format_address_by_removing_postcode(
+            address, self.postcode)
 
         # Store raw inputs for processing
         self._raw_description = description
@@ -132,11 +134,12 @@ class Application:
         return ""
 
     @staticmethod
-    def format_address_by_removing_postcode(address: str) -> str:
+    def format_address_by_removing_postcode(address: str, postcode: str) -> str:
         """ Remove postcode from address string to create a 'clean' address field for database storage.
 
         Args:
             address: Full address string (e.g., "36A Grove Road, London, E3 5AX")
+            postcode: Postcode string to remove from the address (e.g., "E3 5AX")
 
         Returns:
             Address string with postcode removed (e.g., "36A Grove Road, London")
@@ -145,7 +148,9 @@ class Application:
         address = address.strip()
 
         # Remove any postcode from the address for the 'address' field in the database
-        formatted_address = re.sub(POSTCODE_REGEX, '', address).strip(', ')
+        formatted_address = re.sub(
+            re.escape(postcode), '', address).strip(', ')
+
         return formatted_address
 
     def geocode_postcode(self, postcode: str) -> tuple[float, float] | None:

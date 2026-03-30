@@ -383,11 +383,8 @@ def get_current_applications(session: requests.Session) -> List[Dict[str, str]]:
                 f"No applications found on page {page}. Ending pagination.")
             break
 
-        if len(extracted_apps) > 10:
-            break
-
         # comment out later
-        if page > 20:
+        if page > 8:
             break
 
         applications.extend(extracted_apps)
