@@ -20,7 +20,7 @@ from dotenv import load_dotenv
 from selenium.webdriver import Chrome
 from selenium.webdriver.chrome.options import Options
 
-from extract import extract_csrf_token
+from utilities.extract import extract_csrf_token
 
 
 logger = logging.getLogger(__name__)
