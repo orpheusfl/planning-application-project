@@ -3,7 +3,6 @@
 import numpy as np
 import pandas as pd
 
-from .geo import haversine_miles
 
 
 def by_date(df: pd.DataFrame, start_date, end_date) -> pd.DataFrame:
