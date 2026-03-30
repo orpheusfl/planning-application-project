@@ -23,7 +23,7 @@ logging.basicConfig(level=logging.INFO,
 
 def get_rds_connection(rds_host: str, rds_port: int, rds_user: str,
                        rds_password: str, rds_db_name: str):
-    """ Establishes a connection to the RDS database. """
+    """Establish a connection to the RDS database."""
     try:
         conn = psycopg2.connect(
             host=rds_host,
@@ -34,7 +34,7 @@ def get_rds_connection(rds_host: str, rds_port: int, rds_user: str,
         )
         logging.info("Successfully connected to RDS database.")
         return conn
-    except Exception as e:
+    except psycopg2.Error as e:
         logging.error("Error connecting to RDS database: %s", e)
         raise
 
@@ -108,7 +108,11 @@ def insert_application_type(conn, application_type_name: str,
 
 def get_application_type_id(conn, application_type_name: str,
                             application_type_table_name: str) -> int:
-    """ Retrieves application_type_id from application_types table. If application type is not found, adds it to the database and returns the new id. """
+    """Retrieve application_type_id from application_types table.
+
+    If application type is not found, adds it to the database and returns the
+    new id.
+    """
     try:
         with conn.cursor() as cursor:
             # First try to get the application type id
@@ -130,12 +134,19 @@ def get_application_type_id(conn, application_type_name: str,
 
 
 def load_application_to_rds(conn, table_name: str, application_data: dict,
-                            council_id: int, status_type_id: int,
-                            application_type_id: int) -> int:
-    """ Inserts application data and returns generated application_id.
-        The application_data dictionary should contain:
-        - application_number, validation_date, address, postcode, lat, long,
-          ai_summary, source_url, public_interest_score
+                            foreign_keys: dict) -> int:
+    """Insert application data and return generated application_id.
+
+    Args:
+        conn: Database connection object
+        table_name: Name of the target table
+        application_data: Dict with application_number, validation_date, address,
+                         postcode, lat, long, ai_summary, public_interest_score,
+                         application_page_url, document_page_url
+        foreign_keys: Dict with 'council_id', 'status_type_id', 'application_type_id'
+
+    Returns:
+        The generated application_id
     """
     try:
         with conn.cursor() as cursor:
@@ -157,9 +168,9 @@ def load_application_to_rds(conn, table_name: str, application_data: dict,
                 application_data['long'],
                 application_data['ai_summary'],
                 application_data['public_interest_score'],
-                council_id,
-                status_type_id,
-                application_type_id,
+                foreign_keys['council_id'],
+                foreign_keys['status_type_id'],
+                foreign_keys['application_type_id'],
                 application_data['application_page_url'],
                 application_data['document_page_url']
             ))
@@ -169,7 +180,7 @@ def load_application_to_rds(conn, table_name: str, application_data: dict,
                 "Successfully inserted application data with id: %s",
                 application_id)
             return application_id
-    except Exception as e:
+    except psycopg2.Error as e:
         logging.error("Error inserting application data into RDS: %s", e)
         conn.rollback()
         raise
@@ -202,17 +213,16 @@ def validate_environment_variables():
 
 def load_application_data(conn, council_name: str,
                           application_info: dict):
-    """ Loads application data to database.
-        The application_info dict should contain:
-        - application_number, validation_date, address, postcode, lat, long,
-          ai_summary, public_interest_score, status_type, application_type,
-          application_page_url, document_page_url
-        This function will validate the environment variables, retrieve necessary foreign key ids,
-        and then load the application data to the RDS.
+    """Load application data to database.
+
+    The application_info dict should contain: application_number, validation_date,
+    address, postcode, lat, long, ai_summary, public_interest_score, status_type,
+    application_type, application_page_url, document_page_url.
+
+    Validates environment variables, retrieves necessary foreign key IDs, and loads
+    the application data to the RDS.
     """
     validate_environment_variables()
-
-    # Gets the necessary foreign key ids for the application record from the RDS
 
     council_id = get_council_id(
         conn, council_name, os.getenv('COUNCIL_DIM_TABLE'))
@@ -225,9 +235,15 @@ def load_application_data(conn, council_name: str,
         conn, application_info['application_type'],
         os.getenv('APPLICATION_TYPE_DIM_TABLE'))
 
+    foreign_keys = {
+        'council_id': council_id,
+        'status_type_id': status_type_id,
+        'application_type_id': application_type_id
+    }
+
     load_application_to_rds(
         conn, os.getenv('APPLICATION_FACT_TABLE'), application_info,
-        council_id, status_type_id, application_type_id)
+        foreign_keys)
 
 
 if __name__ == "__main__":
@@ -239,7 +255,7 @@ if __name__ == "__main__":
     # Tests that the functions can store some dummy data
     try:
         # Example usage with dummy data
-        conn = get_rds_connection(
+        test_conn = get_rds_connection(
             rds_host='c22-planning-pipeline-db.c57vkec7dkkx.eu-west-2.rds.amazonaws.com',
             rds_port=5432,
             rds_user='',
@@ -248,10 +264,10 @@ if __name__ == "__main__":
         )
 
         # Tests that the connection can be established and a simple query can be run
-        with conn.cursor() as cursor:
-            cursor.execute("SELECT 1")
-            result = cursor.fetchone()
-            logging.info("Test query result: %s", result)
+        with test_conn.cursor() as test_cursor:
+            test_cursor.execute("SELECT 1")
+            test_result = test_cursor.fetchone()
+            logging.info("Test query result: %s", test_result)
 
         # Test that application data can be loaded (using dummy data)
         dummy_application_info = {
@@ -269,6 +285,7 @@ if __name__ == "__main__":
             'document_page_url': 'https://example.com/app?id=PA/99/99999&activeTab=documents'
         }
 
-        load_application_data(conn, 'Tower Hamlets', dummy_application_info)
-    except Exception as e:
+        load_application_data(test_conn, 'Tower Hamlets',
+                              dummy_application_info)
+    except psycopg2.Error as e:
         logging.error("Error during test connection: %s", e)
