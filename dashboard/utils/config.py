@@ -29,7 +29,7 @@ SEARCH_RESULTS_LIMIT = 10
 # ---------------------------------------------------------------------------
 SUB_SCORES: list[dict[str, str]] = [
     {"column": "score_scale", "label": "Scale of development"},
-    {"column": "score_local_impact", "label": "Positive local impact"},
+    {"column": "score_disturbance", "label": "Level of disturbance"},
     {"column": "score_controversy", "label": "Controversy"},
     {"column": "score_environment", "label": "Environmental impact"},
     {"column": "score_housing", "label": "Affordable housing"},

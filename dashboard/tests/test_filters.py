@@ -195,5 +195,5 @@ class TestByMinSubScore:
         assert len(result) == len(sample_applications)
 
     def test_preserves_columns(self, sample_applications):
-        result = by_min_sub_score(sample_applications, "score_local_impact", 3)
+        result = by_min_sub_score(sample_applications, "score_disturbance", 3)
         assert list(result.columns) == list(sample_applications.columns)

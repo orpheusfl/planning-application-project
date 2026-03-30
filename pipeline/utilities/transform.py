@@ -82,6 +82,11 @@ class Application:
         self.application_page_url = urls.get('application_page_url')
         self.document_page_url = urls.get('document_page_url')
         self.public_interest_score: int | None = None
+        self.score_scale: int | None = None
+        self.score_disturbance: int | None = None
+        self.score_controversy: int | None = None
+        self.score_environment: int | None = None
+        self.score_housing: int | None = None
 
         # Process and store address (no network calls)
         address_data = self.format_address(address)
@@ -232,7 +237,7 @@ class Application:
         postcode_instructions = self._get_postcode_instructions(
             postcode=incomplete_postcode)
 
-        prompt = f"""Analyze this planning application and return a JSON response with three fields:
+        prompt = f"""Analyze this planning application and return a JSON response with eight fields:
                     1. "summary": A 2-3 sentence summary highlighting key details residents need to
                     know (housing units, effects on neighboring property value, public amenities, traffic impact, transport links, affordable
                     housing percentage, environmental concerns). CRITICAL: Include inline references
@@ -240,14 +245,14 @@ class Application:
                     Use the format: "...specific detail (<document_type>, page X)..." embedded
                     throughout the summary. For example: "The scheme includes 500 units of housing
                     (source: Application Form, page 2) with 25% affordable housing (source: Design Report, page 5)..."
-                    2. "public_interest_score": An integer from 1-10 assessing public interest level. 
-                    The public interest score should be the average of 5 sub-scores (each 1-10) 
-                    for: a) scale of development
-                        b) positive impact on local area, such as improving local amenities like a leisure centre or park or transport links
-                        c) level of controversy in the documents, especially if there is concern for cultural/historical sites, or significant opposition from local residents.
-                        d) environmental impact, especially if there are concerns about green space, pollution, or sustainability
-                        e) affordable housing provision, with higher scores for more affordable housing
-                    3. "postcode": The complete and correct UK postcode for this application.
+                    2. "score_scale": Scale (1–10): Size and duration of the development. 1 = minor signage change, single day. 5 = extension to existing building, a few months. 10 = multi-year, large-scale demolition and rebuild.
+                    3. "score_disturbance": Level of disturbance (1–10): Day-to-day disturbance — noise, traffic, spatial disruption. 1 = no noticeable change. 5 = temporary road closures, moderate construction noise. 10 = prolonged heavy machinery, major road diversions, significant dust/air quality impact.
+                    4. "score_controversy": Level of controversy (1–10): Likelihood of public opposition based on historical patterns. 1 = routine like-for-like replacement. 5 = loss of green space or community facility. 10 = demolition of heritage building, displacement of residents.
+                    5. "score_environment": Environmental impact (1–10): Impact on air quality, green space, biodiversity, flooding. 1 = no environmental change. 5 = removal of a few trees, minor drainage changes. 10 = building on floodplain, large-scale tree removal, significant emissions increase.
+                    6. "score_housing": Housing impact (1–10): Estimated effect on local housing market. 1 = no effect. 5 = new small residential block, moderate supply change. 10 = large estate redevelopment likely to shift local prices significantly.
+                    7. "public_interest_score": An integer from 1-10 assessing public interest level. 
+                    The public interest score should be the mean average of sub-scores (each 1-10): "score_scale", "score_disturbance", "score_controversy", "score_environment", and "score_housing". Calculate this average and round to the nearest whole number.
+                    8. "postcode": The complete and correct UK postcode for this application.
                     {postcode_instructions}
                 
                         
@@ -373,7 +378,12 @@ Return format:
             return {
                 'ai_summary': result['summary'],
                 'public_interest_score': result['public_interest_score'],
-                'postcode': result.get('postcode', '')
+                'score_scale': result['score_scale'],
+                'score_disturbance': result['score_disturbance'],
+                'score_controversy': result['score_controversy'],
+                'score_environment': result['score_environment'],
+                'score_housing': result['score_housing'],
+                'postcode': result.get('postcode', ''),
             }
         except KeyError as e:
             logger.error("Missing required field in LLM response: %s", e)
@@ -613,6 +623,11 @@ Return format:
         return {
             'ai_summary': analysis['ai_summary'],
             'public_interest_score': analysis['public_interest_score'],
+            'score_scale': analysis['score_scale'],
+            'score_disturbance': analysis['score_disturbance'],
+            'score_controversy': analysis['score_controversy'],
+            'score_environment': analysis['score_environment'],
+            'score_housing': analysis['score_housing'],
             'postcode': analysis['postcode']
         }
 
@@ -648,6 +663,11 @@ Return format:
                 self._raw_pdfs, session, api_key)
             self.ai_summary = pdf_analysis['ai_summary']
             self.public_interest_score = pdf_analysis['public_interest_score']
+            self.score_scale = pdf_analysis['score_scale']
+            self.score_disturbance = pdf_analysis['score_disturbance']
+            self.score_controversy = pdf_analysis['score_controversy']
+            self.score_environment = pdf_analysis['score_environment']
+            self.score_housing = pdf_analysis['score_housing']
 
             # Update postcode with LLM-validated version if provided
             postcode = pdf_analysis.get('postcode')
@@ -739,6 +759,11 @@ Return format:
             'status_type': self.status,
             'ai_summary': self.ai_summary,
             'public_interest_score': self.public_interest_score,
+            'score_scale': self.score_scale,
+            'score_disturbance': self.score_disturbance,
+            'score_controversy': self.score_controversy,
+            'score_environment': self.score_environment,
+            'score_housing': self.score_housing,
             'application_page_url': self.application_page_url,
             'document_page_url': self.document_page_url
         }
