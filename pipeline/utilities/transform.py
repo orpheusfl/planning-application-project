@@ -288,7 +288,9 @@ class Application:
 
         return (
             f"The postcode '{postcode}' appears incomplete or invalid. Use the "
-            f"PDF content and full address to find the complete, correct postcode."
+            f"PDF content and full address to find the complete, correct postcode. "
+            f"If there is no postcode, try to find it based on the address and location details in the documents. "
+            f"If you cannot find a valid postcode, find a postcode that is nearest to the location of the development based on the address and details in the documents."
         )
 
     def _is_valid_postcode(self, postcode: str) -> bool:
