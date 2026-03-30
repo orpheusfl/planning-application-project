@@ -55,6 +55,13 @@ def by_radius(
     return df[distances <= radius_miles]
 
 
+def by_council(df: pd.DataFrame, council_name: str) -> pd.DataFrame:
+    """Keep applications belonging to *council_name*, or all if ``'All'``."""
+    if council_name == "All":
+        return df
+    return df[df["council"] == council_name]
+
+
 def by_application_number(df: pd.DataFrame, query: str) -> pd.DataFrame:
     """Case-insensitive partial match on application number."""
     return df[
