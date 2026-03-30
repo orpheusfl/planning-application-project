@@ -32,6 +32,8 @@ def _get_credentials() -> dict:
     Locally, if AWS credentials aren't configured or the secret can't be
     reached, we fall back to the DB_* environment variables from .env.
     """
+    logging.info("Attempting to load credentials from Secrets Manager...")
+    logging.info(f"SECRET_NAME: {SECRET_NAME}, AWS_REGION: {AWS_REGION}")
     try:
         client = boto3.client("secretsmanager", region_name=AWS_REGION)
         response = client.get_secret_value(SecretId=SECRET_NAME)

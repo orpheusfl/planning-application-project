@@ -16,7 +16,9 @@ import requests
 from bs4 import BeautifulSoup
 from dateutil import parser as date_parser
 from dotenv import load_dotenv
-from selenium import webdriver
+
+from selenium.webdriver import Chrome
+from selenium.webdriver.chrome.options import Options
 
 
 logger = logging.getLogger(__name__)
@@ -390,8 +392,15 @@ Return format:
         Returns:
             Tuple of (cookies list, csrf_token string or None)
         """
-        from selenium.webdriver import Chrome
-        driver = Chrome()
+
+        options = Options()
+        options.add_argument("--headless")
+        options.add_argument("--no-sandbox")
+        options.add_argument("--disable-dev-shm-usage")
+        options.add_argument("--disable-gpu")
+
+        driver = Chrome(options=options)
+
         try:
             driver.get(url)
             time.sleep(10)  # Wait longer for authentication to complete
