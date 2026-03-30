@@ -29,9 +29,14 @@ resource "aws_iam_role" "c22-planning-ecs-secrets-role" {
   assume_role_policy = data.aws_iam_policy_document.c22-planning-ecs-assume-role-policy.json
 }
 
+resource "aws_iam_role_policy_attachment" "c22-planning-ecs-secrets-role-execution-attachment" {
+  role       = aws_iam_role.c22-planning-ecs-secrets-role.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
+}
+
 resource "aws_iam_role_policy" "c22-planning-ecs-secrets-role-policy" {
   name   = "c22-planning-ecs-secrets-role-policy"
-  role   = aws_iam_role.c22-planning-ecs-role.id
+  role   = aws_iam_role.c22-planning-ecs-secrets-role.id
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -77,4 +82,25 @@ resource "aws_iam_role_policy" "c22-planning-execution-s3-policy" {
 resource "aws_iam_role_policy_attachment" "c22-planning-ecs-glue-policy-attachment" {
   role       = aws_iam_role.c22-planning-ecs-role.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole"
+}
+
+# Allow the task role to read secrets from Secrets Manager at runtime
+resource "aws_iam_role_policy" "c22-planning-ecs-task-secrets-policy" {
+  name = "c22-planning-ecs-task-secrets-policy"
+  role = aws_iam_role.c22-planning-ecs-role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "AllowSecretsManagerAccess"
+        Effect = "Allow"
+        Action = [
+          "secretsmanager:GetSecretValue",
+          "secretsmanager:DescribeSecret"
+        ]
+        Resource = aws_secretsmanager_secret.pipeline-db-creds.arn
+      }
+    ]
+  })
 }

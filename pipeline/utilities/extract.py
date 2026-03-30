@@ -387,7 +387,7 @@ def get_current_applications(session: requests.Session) -> List[Dict[str, str]]:
             break
 
         # comment out later
-        if page > 1:
+        if page > 20:
             break
 
         applications.extend(extracted_apps)

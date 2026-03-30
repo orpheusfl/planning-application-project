@@ -55,6 +55,17 @@ resource "aws_cloudwatch_log_group" "notifications-lambda" {
   }
 }
 
+# Trust policy for Lambda service to assume the role
+data "aws_iam_policy_document" "lambda-assume-role-policy" {
+  statement {
+    actions = ["sts:AssumeRole"]
+    principals {
+      type        = "Service"
+      identifiers = ["lambda.amazonaws.com"]
+    }
+  }
+}
+
 # IAM role for Notification Lambda
 resource "aws_iam_role" "lambda-notifications-role" {
   name               = "c22-planning-lambda-notifications-role"

@@ -15,5 +15,7 @@ rds_password = "password"
 rds_database = "planning_db"
 rds_port     = 5432
 
-# Lambda Pipeline Configuration
-lambda_container_image = "123456789012.dkr.ecr.eu-west-2.amazonaws.com/c22-planning-pipeline:latest"
+
+
+# LLM api key
+
