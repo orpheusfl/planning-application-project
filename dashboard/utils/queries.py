@@ -26,6 +26,11 @@ APPLICATIONS_SQL = """
         at.application_type  AS application_type,
         a.ai_summary        AS summary,
         a.public_interest_score,
+        COALESCE(a.score_scale, 0)        AS score_scale,
+        COALESCE(a.score_local_impact, 0) AS score_local_impact,
+        COALESCE(a.score_controversy, 0)  AS score_controversy,
+        COALESCE(a.score_environment, 0)  AS score_environment,
+        COALESCE(a.score_housing, 0)      AS score_housing,
         a.application_page_url,
         a.document_page_url
     FROM application a
@@ -39,6 +44,9 @@ APPLICATIONS_SQL = """
 def load_applications() -> pd.DataFrame:
     """Load all planning applications from the database."""
     conn = get_connection()
-    df = pd.read_sql(APPLICATIONS_SQL, conn)
+    try:
+        df = pd.read_sql(APPLICATIONS_SQL, conn)
+    finally:
+        conn.close()
     df["date"] = pd.to_datetime(df["date"])
     return df

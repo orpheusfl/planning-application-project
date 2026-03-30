@@ -56,9 +56,8 @@ def _get_credentials() -> dict:
         }
 
 
-@st.cache_resource
 def get_connection():
-    """Return a long-lived connection to the Postgres database."""
+    """Return a new connection to the Postgres database."""
     creds = _get_credentials()
     ssl_cert = os.getenv("DB_SSL_CERT", "./global-bundle.pem")
     logging.info(f"Given credentials: {creds}")

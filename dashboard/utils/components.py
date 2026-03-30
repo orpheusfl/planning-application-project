@@ -22,6 +22,7 @@ from .config import (
     SCROLL_OFFSET_PX,
     SEARCH_RESULTS_LIMIT,
     STATUS_CSS_CLASSES,
+    SUB_SCORES,
     TOWER_HAMLETS_CENTER,
 )
 from .db import get_connection
@@ -318,8 +319,23 @@ def render_sidebar(
     df = filters.by_status(df, selected_status)
 
     # Interest score
-    min_score = st.sidebar.slider("Minimum interest score", 1, 10, 1)
+    min_score = st.sidebar.slider(
+        "Minimum interest score", 1, 10, 1,
+        help="The interest score is the average of the five micro-interest "
+             "scores: Scale, Local Impact, Controversy, Environment, and "
+             "Housing. Use this to filter out applications below a certain "
+             "overall interest level.",
+    )
     df = filters.by_min_score(df, min_score)
+
+    # Micro-interest sub-scores
+    with st.sidebar.expander("Filter by micro-interests"):
+        for sub in SUB_SCORES:
+            min_sub = st.slider(
+                sub["label"], 1, 10, 1, key=f"sub_{sub['column']}"
+            )
+            if min_sub > 1:
+                df = filters.by_min_sub_score(df, sub["column"], min_sub)
 
     # Location
     st.sidebar.markdown("---")
@@ -688,6 +704,19 @@ def render_detail(application: pd.Series) -> None:
 
     # Date
     st.markdown(f"**Date:** {application['date'].strftime('%d %B %Y')}")
+
+    # Sub-score breakdown
+    has_sub_scores = any(
+        application.get(sub["column"], 0) > 0 for sub in SUB_SCORES
+    )
+    if has_sub_scores:
+        with st.expander("Interest score breakdown"):
+            for sub in SUB_SCORES:
+                sub_val = int(application.get(sub["column"], 0))
+                st.markdown(
+                    f"{sub['label']}: {_score_pill(sub_val, f'{sub_val}/10')}",
+                    unsafe_allow_html=True,
+                )
 
     # AI summary
     st.markdown("#### Summary")

@@ -9,6 +9,7 @@ from utils.filters import (
     by_application_number,
     by_date,
     by_min_score,
+    by_min_sub_score,
     by_radius,
     by_status,
 )
@@ -160,3 +161,39 @@ class TestByApplicationNumber:
             "FUL", case=False
         ).sum()
         assert len(result) == ful_count
+
+
+class TestByMinSubScore:
+    """Tests for filters.by_min_sub_score."""
+
+    def test_min_1_returns_all(self, sample_applications):
+        result = by_min_sub_score(sample_applications, "score_scale", 1)
+        assert len(result) == len(sample_applications)
+
+    def test_filters_by_scale(self, sample_applications):
+        result = by_min_sub_score(sample_applications, "score_scale", 4)
+        assert all(result["score_scale"] >= 4)
+        assert len(result) == 2  # scores 10 and 4
+
+    def test_filters_by_controversy(self, sample_applications):
+        result = by_min_sub_score(sample_applications, "score_controversy", 8)
+        assert all(result["score_controversy"] >= 8)
+        assert len(result) == 2  # scores 9 and 8
+
+    def test_filters_by_housing(self, sample_applications):
+        result = by_min_sub_score(sample_applications, "score_housing", 10)
+        assert len(result) == 1
+        assert result.iloc[0]["application_id"] == "th-2026-001"
+
+    def test_above_max_returns_empty(self, sample_applications):
+        result = by_min_sub_score(sample_applications, "score_environment", 11)
+        assert result.empty
+
+    def test_missing_column_returns_all(self, sample_applications):
+        """Gracefully handle missing sub-score columns."""
+        result = by_min_sub_score(sample_applications, "nonexistent_column", 5)
+        assert len(result) == len(sample_applications)
+
+    def test_preserves_columns(self, sample_applications):
+        result = by_min_sub_score(sample_applications, "score_local_impact", 3)
+        assert list(result.columns) == list(sample_applications.columns)
