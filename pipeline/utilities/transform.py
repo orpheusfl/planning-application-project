@@ -20,6 +20,8 @@ from dotenv import load_dotenv
 from selenium.webdriver import Chrome
 from selenium.webdriver.chrome.options import Options
 
+from utilities.extract import extract_csrf_token
+
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -29,21 +31,7 @@ load_dotenv()  # Load environment variables from .env file
 POSTCODE_REGEX = r"\b[A-Z]{1,2}\d[A-Z\d]?\s?\d[A-Z]{2}\b"
 
 
-def extract_csrf_token(html_content: str) -> str | None:
-    """Extract CSRF security token from HTML.
-
-    Args:
-        html_content: HTML content to search for token
-
-    Returns:
-        CSRF token value or None if not found
-    """
-    soup = BeautifulSoup(html_content, "html.parser")
-    csrf_input = soup.find("input", {"name": "_csrf"})
-
-    if csrf_input and isinstance(csrf_input.get("value"), str):
-        return csrf_input.get("value")
-    return None
+INCOMPLETE_POSTCODE_REGEX = r"\b[A-Z]{1,2}\d{1,2}[A-Z]?\b"
 
 
 class Application:
@@ -86,9 +74,10 @@ class Application:
         self.public_interest_score: int | None = None
 
         # Process and store address (no network calls)
-        address_data = self.format_address(address)
-        self.address = address_data['address']
-        self.postcode = address_data['postcode']
+
+        self.postcode = Application.extract_postcode_from_address(address)
+        self.address = Application.format_address_by_removing_postcode(
+            address, self.postcode)
 
         # Store raw inputs for processing
         self._raw_description = description
@@ -118,40 +107,51 @@ class Application:
                 "Error parsing validation date '%s': %s", validation_date, e, exc_info=True)
             raise
 
-    def format_address(self, address: str) -> dict:
-        """Extract unique elements from the address string.
+    @staticmethod
+    def extract_postcode_from_address(address: str) -> str:
+        """Extract postcode from address string using regex. If only a partial postcode is found, return it for LLM validation later.
 
         Args:
             address: Full address string (e.g., "36A Grove Road, London, E3 5AX")
 
         Returns:
-            Dict with 'street' (str), 'city' (str), 'postalcode' (str), and 'country' (str) keys
-            Example: {'street': '36A Grove Road', 'city': 'London',
-                'postalcode': 'E35AX', 'country': 'UK'}
+            Extracted postcode string (e.g., "E3 5AX") or empty string if not found
+        """
+        # Attempt to find a complete postcode first
+        match = re.search(POSTCODE_REGEX, address)
+        if match:
+            return match.group(0)
+
+        # If no complete postcode, look for an incomplete one (e.g., "E14", "W1A")
+        match = re.search(INCOMPLETE_POSTCODE_REGEX, address)
+        if match:
+            incomplete_postcode = match.group(0)
+            logger.info("Extracted incomplete postcode: %s",
+                        incomplete_postcode)
+            return incomplete_postcode
+
+        logger.warning("No postcode found in address: %s", address)
+        return ""
+
+    @staticmethod
+    def format_address_by_removing_postcode(address: str, postcode: str) -> str:
+        """ Remove postcode from address string to create a 'clean' address field for database storage.
+
+        Args:
+            address: Full address string (e.g., "36A Grove Road, London, E3 5AX")
+            postcode: Postcode string to remove from the address (e.g., "E3 5AX")
+
+        Returns:
+            Address string with postcode removed (e.g., "36A Grove Road, London")
         """
 
         address = address.strip()
 
-        # Try to extract a complete postcode first
-        postcode_match = re.search(POSTCODE_REGEX, address)
-        if postcode_match:
-            postcode = postcode_match.group(0)
-        else:
-            # Fall back to incomplete postcode pattern (e.g., "E14", "W1A")
-            # This allows LLM to validate and complete incomplete postcodes later
-            incomplete_postcode_regex = r"\b[A-Z]{1,2}\d{1,2}[A-Z]?\b"
-            postcode_match = re.search(incomplete_postcode_regex, address)
-            if not postcode_match:
-                logger.warning("No postcode found in address: %s", address)
-                raise ValueError(
-                    f"Could not extract postcode from address: {address}")
-            postcode = postcode_match.group(0)
-            logger.info("Extracted incomplete postcode: %s", postcode)
+        # Remove any postcode from the address for the 'address' field in the database
+        formatted_address = re.sub(
+            re.escape(postcode), '', address).strip(', ')
 
-        address_without_postcode = address.replace(
-            postcode, "").strip(", ").strip()
-
-        return {'address': address_without_postcode, 'postcode': postcode}
+        return formatted_address
 
     def geocode_postcode(self, postcode: str) -> tuple[float, float] | None:
         """Convert a UK postcode to (lat, lon) via postcodes.io.
@@ -253,26 +253,26 @@ class Application:
                     {postcode_instructions}
                 
                         
-                    Respond ONLY with valid JSON, no additional text.
+                                Respond ONLY with valid JSON, no additional text.
 
-Original Application Description:
-{original_description}
+            Original Application Description:
+            {original_description}
 
-Full Address:
-{full_address}
+            Full Address:
+            {full_address}
 
-Extracted PDF Content:
-{formatted_pdf_text}
+            Extracted PDF Content:
+            {formatted_pdf_text}
 
-Focus the summary on: proposed uses, number of units/buildings, key impacts on the
-neighborhood, affordable housing provisions, and any notable amenities or concerns.
-If there is no pdf content, summarise based on the original description.
+            Focus the summary on: proposed uses, number of units/buildings, key impacts on the
+            neighborhood, affordable housing provisions, and any notable amenities or concerns.
+            If there is no pdf content, summarise based on the original description.
 
-Use UK English and be concise, but using full sentences. Avoid generic statements
-and focus on specific details that would be relevant to local residents.
+            Use UK English and be concise, but using full sentences. Avoid generic statements
+            and focus on specific details that would be relevant to local residents.
 
-Return format:
-{{"summary": "...", "public_interest_score": <number>, "postcode": "..."}}"""
+            Return format:
+            {{"summary": "...", "public_interest_score": <number>, "postcode": "..."}}"""
         return prompt
 
     def _get_postcode_instructions(self, postcode: str) -> str:
@@ -293,7 +293,9 @@ Return format:
 
         return (
             f"The postcode '{postcode}' appears incomplete or invalid. Use the "
-            f"PDF content and full address to find the complete, correct postcode."
+            f"PDF content and full address to find the complete, correct postcode. "
+            f"If there is no postcode, try to find it based on the address and location details in the documents. "
+            f"If you cannot find a valid postcode, find a postcode that is nearest to the location of the development based on the address and details in the documents."
         )
 
     def _is_valid_postcode(self, postcode: str) -> bool:

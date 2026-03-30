@@ -510,12 +510,11 @@ def paginate_applications_helper(
             logger.info("No applications on page %d. Ending pagination.", page)
             break
 
-        if len(results) > 10:
-            logger.info(
-                "Overflow page detected on page %d. Ending pagination.", page)
+        # comment out later
+        if page > 8:
             break
 
-        applications.extend(results)
+        applications.extend(extracted_apps)
         page += 1
 
     if page_limit and page > page_limit:
