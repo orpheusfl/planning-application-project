@@ -24,10 +24,11 @@ class TestFormatAddress:
 
     def test_happy_path_valid_address(self, sample_raw_address):
         """Extract postcode and address from valid UK address."""
-        address = Application.format_address_by_removing_postcode(
-            sample_raw_address)
+
         postcode = Application.extract_postcode_from_address(
             sample_raw_address)
+        address = Application.format_address_by_removing_postcode(
+            sample_raw_address, postcode)
 
         assert address == "Iceland Wharf, Iceland Road, London"
         assert postcode == "E3 2JP"
