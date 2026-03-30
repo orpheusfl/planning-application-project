@@ -203,61 +203,61 @@ def _post_and_validate(
 # ---------------------------------------------------------------------------
 
 
-def _monday_of_week(target_date: date) -> date:
-    """Returns the Monday on or before the given date."""
-    return target_date - timedelta(days=target_date.weekday())
+# def _monday_of_week(target_date: date) -> date:
+#     """Returns the Monday on or before the given date."""
+#     return target_date - timedelta(days=target_date.weekday())
 
 
-def _format_week_string(monday: date) -> str:
-    """
-    Formats a Monday date as the site's dropdown value string (e.g. "30 Mar 2026").
+# def _format_week_string(monday: date) -> str:
+#     """
+#     Formats a Monday date as the site's dropdown value string (e.g. "30 Mar 2026").
 
-    Uses manual formatting to guarantee no leading zero across platforms,
-    since strftime's ``%-d`` is Linux-only.
-    """
-    return f"{monday.day} {monday.strftime('%b')} {monday.year}"
-
-
-def select_week_value(available_weeks: List[str], target_date: date) -> Optional[str]:
-    """
-    Finds the most appropriate week option for a given target date.
-
-    Returns the ``"D Mon YYYY"`` string for the Monday of ``target_date``'s week,
-    or None if that Monday is not present in the available options.
-    """
-    target_str = _format_week_string(_monday_of_week(target_date))
-
-    if target_str in available_weeks:
-        logger.info("Matched week dropdown value: '%s'", target_str)
-        return target_str
-
-    logger.warning(
-        "Week '%s' not found in available weeks. Available: %s",
-        target_str, available_weeks,
-    )
-    return None
+#     Uses manual formatting to guarantee no leading zero across platforms,
+#     since strftime's ``%-d`` is Linux-only.
+#     """
+#     return f"{monday.day} {monday.strftime('%b')} {monday.year}"
 
 
-def _resolve_week_value(session: requests.Session, target_date: date) -> Optional[str]:
-    """
-    GETs the weekly list search page and resolves ``target_date`` to a week dropdown value.
+# def select_week_value(available_weeks: List[str], target_date: date) -> Optional[str]:
+#     """
+#     Finds the most appropriate week option for a given target date.
 
-    Returns None if the page cannot be fetched or the date falls outside
-    the site's ~16-week history window.
-    """
-    response = _get_page(session, WEEKLY_LIST_SEARCH_URL)
-    if not response:
-        return None
+#     Returns the ``"D Mon YYYY"`` string for the Monday of ``target_date``'s week,
+#     or None if that Monday is not present in the available options.
+#     """
+#     target_str = _format_week_string(_monday_of_week(target_date))
 
-    available_weeks = parse_available_weeks(response.text)
-    week_value = select_week_value(available_weeks, target_date)
+#     if target_str in available_weeks:
+#         logger.info("Matched week dropdown value: '%s'", target_str)
+#         return target_str
 
-    if not week_value:
-        logger.error(
-            "Target date %s does not map to any available week. "
-            "The site only keeps ~16 weeks of history.", target_date,
-        )
-    return week_value
+#     logger.warning(
+#         "Week '%s' not found in available weeks. Available: %s",
+#         target_str, available_weeks,
+#     )
+#     return None
+
+
+# def _resolve_week_value(session: requests.Session, target_date: date) -> Optional[str]:
+#     """
+#     GETs the weekly list search page and resolves ``target_date`` to a week dropdown value.
+
+#     Returns None if the page cannot be fetched or the date falls outside
+#     the site's ~16-week history window.
+#     """
+#     response = _get_page(session, WEEKLY_LIST_SEARCH_URL)
+#     if not response:
+#         return None
+
+#     available_weeks = parse_available_weeks(response.text)
+#     week_value = select_week_value(available_weeks, target_date)
+
+#     if not week_value:
+#         logger.error(
+#             "Target date %s does not map to any available week. "
+#             "The site only keeps ~16 weeks of history.", target_date,
+#         )
+#     return week_value
 
 
 # ---------------------------------------------------------------------------
@@ -317,7 +317,9 @@ def prime_weekly_decided_state(session: requests.Session, target_date: date) -> 
     if not csrf_token:
         return False
 
-    week_value = _resolve_week_value(session, target_date)
+    weeks = parse_available_weeks(
+        session.get(WEEKLY_LIST_SEARCH_URL).text)
+    week_value = weeks[0]
     if not week_value:
         return False
 
@@ -712,9 +714,9 @@ def enrich_applications(
             enriched.append(result)
             count += 1
         # DEVELOPMENT CODE - remove later
-        if count > 3:
-            logger.info("Reached limit of 3 applications. Stopping.")
-            break
+        # if count > 3:
+        #    logger.info("Reached limit of 3 applications. Stopping.")
+        #    break
 
     logger.info("Enrichment complete. %d/%d succeeded", len(enriched), total)
     return enriched
@@ -777,13 +779,13 @@ def run_scraper(conn: Any) -> List[Dict[str, Any]]:
     """Runs the full scraping pipeline and returns enriched application data."""
     session = create_scraper_session()
 
-    # Step 1: Scrape current applications
-    logger.info("Starting scrape of current applications...")
-    current_applications = get_current_applications(session)
+    # # Step 1: Scrape current applications
+    # logger.info("Starting scrape of current applications...")
+    # current_applications = get_current_applications(session)
     existing_applications = get_existing_applications(conn)
-    new_current_apps = filter_new_or_changed_applications(
-        current_applications, existing_applications)
-    enriched_current_apps = enrich_applications(session, new_current_apps)
+    # new_current_apps = filter_new_or_changed_applications(
+    #     current_applications, existing_applications)
+    # enriched_current_apps = enrich_applications(session, new_current_apps)
 
     logger.info("Starting scrape of weekly applications...")
     # Step 2: Scrape weekly decided applications for the past week
@@ -794,7 +796,7 @@ def run_scraper(conn: Any) -> List[Dict[str, Any]]:
     enriched_weekly_apps = enrich_applications(session, new_weekly_apps)
 
     # Combine and return all enriched applications
-    all_enriched = enriched_current_apps + enriched_weekly_apps
+    all_enriched = enriched_weekly_apps
     logger.info("Total enriched applications from both sources: %d",
                 len(all_enriched))
     return all_enriched
@@ -802,6 +804,4 @@ def run_scraper(conn: Any) -> List[Dict[str, Any]]:
 
 if __name__ == "__main__":
     # For standalone testing of the scraper logic without DB integration
-    print(run_scraper(None)[0])
-    print("-----------------")
-    print(run_scraper(None)[7])
+    print(run_scraper(None))
