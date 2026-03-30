@@ -20,7 +20,7 @@ from utils.components import (
     render_sidebar,
 )
 from utils.config import CSS
-from utils.queries import load_applications
+from utils.queries import load_applications, load_council_boundaries
 
 # ---------------------------------------------------------------------------
 # Page config — must be the first Streamlit command
@@ -72,12 +72,17 @@ def main() -> None:
 
     applications = load_applications()
 
-    filtered_df, location_info = render_sidebar(applications)
+    filtered_df, location_info, selected_council = render_sidebar(applications)
+
+    # Load boundary polygons only for councils that appear in the data
+    council_names = applications["council"].unique().tolist()
+    council_boundaries = load_council_boundaries(council_names)
 
     # Render interactive map with applications plotted as colour-coded markers
     st.title("Tower Hamlets planning applications")
     cluster_df = build_cluster_map_data(filtered_df)
-    event = render_map(cluster_df, location_info)
+    event = render_map(cluster_df, location_info,
+                       council_boundaries, selected_council)
 
     # Selection priority is determined by the last user interaction.
     # A fresh map click sets source to "map"; typing in search sets it

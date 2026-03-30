@@ -7,8 +7,10 @@ import pytest
 
 from utils.filters import (
     by_application_number,
+    by_council,
     by_date,
     by_min_score,
+    by_min_sub_score,
     by_radius,
     by_status,
 )
@@ -160,3 +162,65 @@ class TestByApplicationNumber:
             "FUL", case=False
         ).sum()
         assert len(result) == ful_count
+
+
+class TestByMinSubScore:
+    """Tests for filters.by_min_sub_score."""
+
+    def test_min_1_returns_all(self, sample_applications):
+        result = by_min_sub_score(sample_applications, "score_scale", 1)
+        assert len(result) == len(sample_applications)
+
+    def test_filters_by_scale(self, sample_applications):
+        result = by_min_sub_score(sample_applications, "score_scale", 4)
+        assert all(result["score_scale"] >= 4)
+        assert len(result) == 2  # scores 10 and 4
+
+    def test_filters_by_controversy(self, sample_applications):
+        result = by_min_sub_score(sample_applications, "score_controversy", 8)
+        assert all(result["score_controversy"] >= 8)
+        assert len(result) == 2  # scores 9 and 8
+
+    def test_filters_by_housing(self, sample_applications):
+        result = by_min_sub_score(sample_applications, "score_housing", 10)
+        assert len(result) == 1
+        assert result.iloc[0]["application_id"] == "th-2026-001"
+
+    def test_above_max_returns_empty(self, sample_applications):
+        result = by_min_sub_score(sample_applications, "score_environment", 11)
+        assert result.empty
+
+    def test_missing_column_returns_all(self, sample_applications):
+        """Gracefully handle missing sub-score columns."""
+        result = by_min_sub_score(sample_applications, "nonexistent_column", 5)
+        assert len(result) == len(sample_applications)
+
+    def test_preserves_columns(self, sample_applications):
+        result = by_min_sub_score(sample_applications, "score_local_impact", 3)
+        assert list(result.columns) == list(sample_applications.columns)
+
+
+class TestByCouncil:
+    """Tests for filters.by_council."""
+
+    def test_all_returns_everything(self, sample_applications):
+        result = by_council(sample_applications, "All")
+        assert len(result) == len(sample_applications)
+
+    def test_filter_tower_hamlets(self, sample_applications):
+        result = by_council(sample_applications, "Tower Hamlets")
+        assert len(result) == 4
+        assert all(result["council"] == "Tower Hamlets")
+
+    def test_filter_hackney(self, sample_applications):
+        result = by_council(sample_applications, "Hackney")
+        assert len(result) == 1
+        assert result.iloc[0]["council"] == "Hackney"
+
+    def test_nonexistent_council_returns_empty(self, sample_applications):
+        result = by_council(sample_applications, "Westminster")
+        assert result.empty
+
+    def test_preserves_columns(self, sample_applications):
+        result = by_council(sample_applications, "Tower Hamlets")
+        assert list(result.columns) == list(sample_applications.columns)
