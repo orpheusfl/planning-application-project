@@ -32,6 +32,7 @@ WEEKLY_LIST_POST_URL = f"{BASE_URL}weeklyListResults.do?action=firstPage"
 CURRENT_LIST_SEARCH_URL = f"{BASE_URL}search.do?action=advanced"
 CURRENT_LIST_POST_URL = f"{BASE_URL}currentListResults.do?action=firstPage"
 
+# Mappings for extracting the relevant fields from the Summary and Further Details tables
 SUMMARY_FIELD_MAPPING: Dict[str, str] = {
     "Application Validated": "validation_date",
     "Address":               "address",
@@ -45,6 +46,7 @@ FURTHER_DETAILS_FIELD_MAPPING: Dict[str, str] = {
     "Application Type": "app_type",
 }
 
+# Filter values from button inputs on the weekly list form (is included with the post request)
 DATE_TYPE_DECIDED = "DC_Decided"
 DATE_TYPE_VALIDATED = "DC_Validated"
 
@@ -62,20 +64,24 @@ logger = logging.getLogger(__name__)
 # Session Management
 # ---------------------------------------------------------------------------
 
-
 def create_scraper_session() -> requests.Session:
     """Initialises a persistent session with standard browser headers and disabled SSL."""
-    session = requests.Session()
-    session.verify = False
-    session.headers.update({
-        "User-Agent": (
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:148.0) "
-            "Gecko/20100101 Firefox/148.0"
-        ),
-        "Accept":     "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Connection": "keep-alive",
-    })
-    return session
+    try:
+        session = requests.Session()
+        session.verify = False
+
+        session.headers.update({
+            "User-Agent": (
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:148.0) "
+                "Gecko/20100101 Firefox/148.0"
+            ),
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Connection": "keep-alive",
+        })
+        return session
+    except Exception as e:
+        logger.error("Error creating session: %s", e)
+        raise
 
 
 def acquire_session_cookie(session: requests.Session, url: str) -> bool:
@@ -196,68 +202,6 @@ def _post_and_validate(
         logger.error("Server returned an error or timeout during %s", context)
         return False
     return True
-
-
-# ---------------------------------------------------------------------------
-# Week Resolution
-# ---------------------------------------------------------------------------
-
-
-# def _monday_of_week(target_date: date) -> date:
-#     """Returns the Monday on or before the given date."""
-#     return target_date - timedelta(days=target_date.weekday())
-
-
-# def _format_week_string(monday: date) -> str:
-#     """
-#     Formats a Monday date as the site's dropdown value string (e.g. "30 Mar 2026").
-
-#     Uses manual formatting to guarantee no leading zero across platforms,
-#     since strftime's ``%-d`` is Linux-only.
-#     """
-#     return f"{monday.day} {monday.strftime('%b')} {monday.year}"
-
-
-# def select_week_value(available_weeks: List[str], target_date: date) -> Optional[str]:
-#     """
-#     Finds the most appropriate week option for a given target date.
-
-#     Returns the ``"D Mon YYYY"`` string for the Monday of ``target_date``'s week,
-#     or None if that Monday is not present in the available options.
-#     """
-#     target_str = _format_week_string(_monday_of_week(target_date))
-
-#     if target_str in available_weeks:
-#         logger.info("Matched week dropdown value: '%s'", target_str)
-#         return target_str
-
-#     logger.warning(
-#         "Week '%s' not found in available weeks. Available: %s",
-#         target_str, available_weeks,
-#     )
-#     return None
-
-
-# def _resolve_week_value(session: requests.Session, target_date: date) -> Optional[str]:
-#     """
-#     GETs the weekly list search page and resolves ``target_date`` to a week dropdown value.
-
-#     Returns None if the page cannot be fetched or the date falls outside
-#     the site's ~16-week history window.
-#     """
-#     response = _get_page(session, WEEKLY_LIST_SEARCH_URL)
-#     if not response:
-#         return None
-
-#     available_weeks = parse_available_weeks(response.text)
-#     week_value = select_week_value(available_weeks, target_date)
-
-#     if not week_value:
-#         logger.error(
-#             "Target date %s does not map to any available week. "
-#             "The site only keeps ~16 weeks of history.", target_date,
-#         )
-#     return week_value
 
 
 # ---------------------------------------------------------------------------
@@ -432,7 +376,7 @@ def clean_html_text(element: Optional[Tag]) -> str:
 def extract_table_metadata(
     soup: BeautifulSoup,
     table_id: str,
-    field_mapping: Dict[str, str],
+    field_mapping: Dict[str, str]
 ) -> Dict[str, str]:
     """Extracts key metadata fields from a specified table using a field mapping."""
     metadata: Dict[str, str] = {}
