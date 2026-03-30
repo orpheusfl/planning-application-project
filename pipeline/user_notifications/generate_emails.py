@@ -8,6 +8,7 @@ from pathlib import Path
 
 import boto3
 import pandas as pd
+import dotenv
 
 from user_application_matching import (
     get_rds_connection,
@@ -16,6 +17,8 @@ from user_application_matching import (
     convert_df_to_gdf,
     match_applications_to_users,
 )
+
+dotenv.load_dotenv()  # Load environment variables from .env file
 
 ses_client = boto3.client(
     "ses", region_name=os.getenv("AWS_REGION", "eu-west-2"))
@@ -26,7 +29,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-SENDER_EMAIL = os.getenv("SENDER_EMAIL", "noreply@planningwatchdog.co.uk")
+SENDER_EMAIL = os.getenv(
+    "SENDER_EMAIL")
 LOGO_PATH = Path(__file__).parent / "OpenPlan_Logo.png"
 
 
@@ -46,14 +50,16 @@ def get_logo_base64() -> str:
 
 
 @dataclass
-class UserMatch:
-    """Represents a user's email and their matching applications."""
+class SubscriptionMatch:
+    """Represents a subscription and its matching applications."""
 
     email: str
+    radius_miles: float
+    min_interest: int
     applications: list[dict]
 
     def has_matches(self) -> bool:
-        """Returns True if user has any matching applications."""
+        """Returns True if subscription has any matching applications."""
         return len(self.applications) > 0
 
 
@@ -167,73 +173,83 @@ def send_email_via_ses(recipient_email: str, subject: str, html_body: str) -> bo
         return False
 
 
-def group_applications_by_user(matched_df: pd.DataFrame) -> dict[str, list[dict]]:
-    """Groups matched applications by user email.
+def group_applications_by_subscription(matched_df: pd.DataFrame) -> dict[tuple, list[dict]]:
+    """Groups matched applications by subscription.
+
+    Each subscription is uniquely identified by email, radius_miles, and min_interest.
+    This ensures users with multiple subscriptions receive separate emails per subscription.
 
     Args:
         matched_df: DataFrame with matched applications from user_application_matching
 
     Returns:
-        Dictionary mapping email addresses to lists of application dictionaries
+        Dictionary mapping (email, radius_miles, min_interest_score) tuples to application lists
     """
-    grouped = matched_df.groupby("email")
-    user_applications = {}
+    subscription_cols = ["email", "radius_miles", "min_interest_score"]
+    grouped = matched_df.groupby(subscription_cols)
+    subscriptions = {}
 
-    for email, group in grouped:
+    for (email, radius, min_interest), group in grouped:
         applications = group[
             ["application_id", "description",
                 "public_interest_score", "postcode_right", "application_page_url"]
         ].to_dict("records")
-        user_applications[email] = applications
+        subscription_key = (email, radius, min_interest)
+        subscriptions[subscription_key] = applications
 
-    return user_applications
+    return subscriptions
 
 
-def create_user_matches(user_applications: dict[str, list[dict]]) -> list[UserMatch]:
-    """Creates UserMatch objects from grouped applications.
+def create_subscription_matches(subscriptions: dict[tuple, list[dict]]) -> list[SubscriptionMatch]:
+    """Creates SubscriptionMatch objects from grouped subscriptions.
 
     Args:
-        user_applications: Dictionary mapping emails to application lists
+        subscriptions: Dictionary mapping subscription tuples to application lists
 
     Returns:
-        List of UserMatch objects
+        List of SubscriptionMatch objects
     """
     matches = [
-        UserMatch(email=email, applications=apps)
-        for email, apps in user_applications.items()
+        SubscriptionMatch(email=email, radius_miles=radius,
+                          min_interest=min_int, applications=apps)
+        for (email, radius, min_int), apps in subscriptions.items()
     ]
     return matches
 
 
-def send_notification_emails(user_matches: list[UserMatch]) -> dict:
-    """Sends notification emails to users with matching applications.
+def send_notification_emails(subscription_matches: list[SubscriptionMatch]) -> dict:
+    """Sends notification emails to subscriptions with matching applications.
 
-    Only sends emails to users with at least one matching application.
+    Only sends emails to subscriptions with at least one matching application.
 
     Args:
-        user_matches: List of UserMatch objects
+        subscription_matches: List of SubscriptionMatch objects
 
     Returns:
         Dictionary with send statistics
     """
-    total_users = len(user_matches)
-    emails_with_matches = sum(
-        1 for match in user_matches if match.has_matches())
+    total_subscriptions = len(subscription_matches)
+    subscriptions_with_matches = sum(
+        1 for match in subscription_matches if match.has_matches())
     emails_sent = 0
     emails_failed = 0
 
     email_subject = "New Planning Applications Matching Your Preferences"
 
-    for user_match in user_matches:
-        if not user_match.has_matches():
-            logger.info("No matches for %s, skipping email", user_match.email)
+    for subscription_match in subscription_matches:
+        if not subscription_match.has_matches():
+            logger.info(
+                "No matches for subscription %s (radius: %.1f mi, min_score: %d), skipping email",
+                subscription_match.email,
+                subscription_match.radius_miles,
+                subscription_match.min_interest,
+            )
             continue
 
         html_body = create_email_html(
-            user_match.applications)
-        return html_body
+            subscription_match.applications)
         send_success = send_email_via_ses(
-            user_match.email,
+            subscription_match.email,
             email_subject,
             html_body,
         )
@@ -242,10 +258,9 @@ def send_notification_emails(user_matches: list[UserMatch]) -> dict:
             emails_sent += 1
         else:
             emails_failed += 1
-
     stats = {
-        "total_users_processed": total_users,
-        "users_with_matches": emails_with_matches,
+        "total_subscriptions_processed": total_subscriptions,
+        "subscriptions_with_matches": subscriptions_with_matches,
         "emails_sent": emails_sent,
         "emails_failed": emails_failed,
     }
@@ -254,7 +269,7 @@ def send_notification_emails(user_matches: list[UserMatch]) -> dict:
         "Email sending complete. Sent: %d, Failed: %d, Skipped: %d",
         stats["emails_sent"],
         stats["emails_failed"],
-        total_users - emails_with_matches,
+        total_subscriptions - subscriptions_with_matches,
     )
 
     return stats
@@ -300,22 +315,20 @@ def generate_and_send_emails(
     users_gdf = convert_df_to_gdf(users_df)
     applications_gdf = convert_df_to_gdf(applications_df)
 
-
     matched_df = match_applications_to_users(users_gdf, applications_gdf)
-    print(matched_df)
     if matched_df.empty:
-        logger.info("No matching applications found for any users")
+        logger.info("No matching applications found for any subscriptions")
         return {
-            "total_users_processed": len(users_df),
-            "users_with_matches": 0,
+            "total_subscriptions_processed": len(users_df),
+            "subscriptions_with_matches": 0,
             "emails_sent": 0,
             "emails_failed": 0,
         }
 
-    user_applications = group_applications_by_user(matched_df)
-    user_matches = create_user_matches(user_applications)
+    subscriptions = group_applications_by_subscription(matched_df)
+    subscription_matches = create_subscription_matches(subscriptions)
 
-    stats = send_notification_emails(user_matches)
+    stats = send_notification_emails(subscription_matches)
 
     return stats
 
@@ -360,5 +373,8 @@ if __name__ == "__main__":
             "application_page_url": "https://development.towerhamlets.gov.uk/online-applications/applicationDetails.do?keyVal=DCAPR_150302&activeTab=summary"
         },
     ]
+
+
+if __name__ == "__main__":
     print(generate_and_send_emails(
         'c22-planning-pipeline-db.c57vkec7dkkx.eu-west-2.rds.amazonaws.com', 5432, 'planning_admin', 'password', 'planning_db', applications))
