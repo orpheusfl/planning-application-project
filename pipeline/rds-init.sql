@@ -48,7 +48,11 @@ CREATE TABLE IF NOT EXISTS application (
     lat NUMERIC(10, 7), 
     long NUMERIC(10, 7),
     ai_summary TEXT,
-    public_interest_score BIGINT,
+    public_interest_score SMALLINT,
+    score_scale SMALLINT,
+    score_disturbance SMALLINT,
+    score_environment SMALLINT,
+    score_housing SMALLINT,
     application_page_url TEXT,
     document_page_url TEXT,
     

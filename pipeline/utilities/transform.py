@@ -72,6 +72,10 @@ class Application:
         self.application_page_url = urls.get('application_page_url')
         self.document_page_url = urls.get('document_page_url')
         self.public_interest_score: int | None = None
+        self.score_scale: int | None = None
+        self.score_disturbance: int | None = None
+        self.score_environment: int | None = None
+        self.score_housing: int | None = None
 
         # Process and store address (no network calls)
 
@@ -234,7 +238,7 @@ class Application:
         postcode_instructions = self._get_postcode_instructions(
             postcode=incomplete_postcode)
 
-        prompt = f"""Analyze this planning application and return a JSON response with three fields:
+        prompt = f"""Analyze this planning application and return a JSON response with six fields:
                     1. "summary": A 2-3 sentence summary highlighting key details residents need to
                     know (housing units, effects on neighboring property value, public amenities, traffic impact, transport links, affordable
                     housing percentage, environmental concerns). CRITICAL: Include inline references
@@ -242,14 +246,36 @@ class Application:
                     Use the format: "...specific detail (<document_type>, page X)..." embedded
                     throughout the summary. For example: "The scheme includes 500 units of housing
                     (source: Application Form, page 2) with 25% affordable housing (source: Design Report, page 5)..."
-                    2. "public_interest_score": An integer from 1-10 assessing public interest level. 
-                    The public interest score should be the average of 5 sub-scores (each 1-10) 
-                    for: a) scale of development
-                        b) positive impact on local area, such as improving local amenities like a leisure centre or park or transport links
-                        c) level of controversy in the documents, especially if there is concern for cultural/historical sites, or significant opposition from local residents.
-                        d) environmental impact, especially if there are concerns about green space, pollution, or sustainability
-                        e) affordable housing provision, with higher scores for more affordable housing
-                    3. "postcode": The complete and correct UK postcode for this application.
+
+                    2. "score_disturbance": Level of disturbance (1–5). Consider sound, spatial disruption, and air quality.
+                       1 = No noticeable change. Example: internal refurbishment, like-for-like window replacement.
+                       2 = Minor, short-lived disruption. Example: scaffolding for a few weeks, occasional drilling during work hours.
+                       3 = Moderate disruption for several months. Example: temporary road narrowing, regular construction noise Mon–Fri, some dust.
+                       4 = Significant disruption over 6+ months. Example: road closures, heavy machinery daily, noticeable dust and vibration, parking displaced.
+                       5 = Severe, prolonged disruption for 1+ years. Example: major road diversions, pile-driving, demolition dust requiring air quality monitoring, loss of pavement access.
+
+                    3. "score_scale": Scale of development (1–5). Consider the physical size and duration of works.
+                       1 = Tiny, completed in days. Example: new shop sign, single tree removal, fence replacement.
+                       2 = Small, completed in weeks. Example: loft conversion, single-storey rear extension, dropped kerb.
+                       3 = Medium, several months. Example: two-storey side extension, conversion of house to flats, new roof.
+                       4 = Large, 6–12 months. Example: new-build block of 10–50 flats, demolition and rebuild of a commercial unit.
+                       5 = Major, 1+ years. Example: multi-phase estate regeneration, 100+ residential units, tower block construction.
+
+                    4. "score_housing": Effect on local housing prices (1–5). Consider the rough potential impact based on similar developments.
+                       1 = No measurable effect. Example: internal works, change of use from one shop to another.
+                       2 = Negligible effect. Example: single new dwelling or conversion of house into 2 flats.
+                       3 = Small but noticeable effect. Example: new block of 10–20 units, may slightly increase supply and competition.
+                       4 = Moderate effect. Example: 50–100 new homes, affordable housing included, likely to shift local rental and sale prices by a few percent.
+                       5 = Significant market impact. Example: 200+ units or estate regeneration that redefines the area, likely to attract new demographics and visibly move prices.
+
+                    5. "score_environment": Environmental and community impact (1–5). Consider wildlife, community spaces, and the effect of new residents on the local area.
+                       1 = No environmental or community change. Example: internal works, signage.
+                       2 = Minimal impact. Example: removal of a single tree (replaced), minor change to a private garden.
+                       3 = Moderate impact. Example: loss of a small green area, new residents bringing footfall to local shops but also more waste and noise.
+                       4 = Notable impact. Example: building on informal green space, loss of biodiversity corridor, development near a watercourse, 50+ new residents changing the character of a quiet street.
+                       5 = Major impact. Example: building on floodplain, large-scale tree removal, loss of allotments or playing fields, 200+ new residents fundamentally changing the neighbourhood feel.
+
+                    6. "postcode": The complete and correct UK postcode for this application.
                     {postcode_instructions}
                 
                         
@@ -271,8 +297,8 @@ class Application:
             Use UK English and be concise, but using full sentences. Avoid generic statements
             and focus on specific details that would be relevant to local residents.
 
-            Return format:
-            {{"summary": "...", "public_interest_score": <number>, "postcode": "..."}}"""
+Return format:
+{{"summary": "...", "score_disturbance": <1-5>, "score_scale": <1-5>, "score_housing": <1-5>, "score_environment": <1-5>, "postcode": "..."}}"""
         return prompt
 
     def _get_postcode_instructions(self, postcode: str) -> str:
@@ -374,10 +400,22 @@ class Application:
             raise ValueError(f"Invalid JSON from LLM: {str(e)}") from e
 
         try:
+            sub_scores = [
+                result['score_scale'],
+                result['score_disturbance'],
+                result['score_environment'],
+                result['score_housing'],
+            ]
+            public_interest_score = round(sum(sub_scores) / len(sub_scores))
+
             return {
                 'ai_summary': result['summary'],
-                'public_interest_score': result['public_interest_score'],
-                'postcode': result.get('postcode', '')
+                'public_interest_score': public_interest_score,
+                'score_scale': result['score_scale'],
+                'score_disturbance': result['score_disturbance'],
+                'score_environment': result['score_environment'],
+                'score_housing': result['score_housing'],
+                'postcode': result.get('postcode', ''),
             }
         except KeyError as e:
             logger.error("Missing required field in LLM response: %s", e)
@@ -624,6 +662,10 @@ class Application:
         return {
             'ai_summary': analysis['ai_summary'],
             'public_interest_score': analysis['public_interest_score'],
+            'score_scale': analysis['score_scale'],
+            'score_disturbance': analysis['score_disturbance'],
+            'score_environment': analysis['score_environment'],
+            'score_housing': analysis['score_housing'],
             'postcode': analysis['postcode']
         }
 
@@ -659,6 +701,10 @@ class Application:
                 self._raw_pdfs, session, api_key)
             self.ai_summary = pdf_analysis['ai_summary']
             self.public_interest_score = pdf_analysis['public_interest_score']
+            self.score_scale = pdf_analysis['score_scale']
+            self.score_disturbance = pdf_analysis['score_disturbance']
+            self.score_environment = pdf_analysis['score_environment']
+            self.score_housing = pdf_analysis['score_housing']
 
             # Update postcode with LLM-validated version if provided
             postcode = pdf_analysis.get('postcode')
@@ -750,6 +796,10 @@ class Application:
             'status_type': self.status,
             'ai_summary': self.ai_summary,
             'public_interest_score': self.public_interest_score,
+            'score_scale': self.score_scale,
+            'score_disturbance': self.score_disturbance,
+            'score_environment': self.score_environment,
+            'score_housing': self.score_housing,
             'application_page_url': self.application_page_url,
             'document_page_url': self.document_page_url
         }

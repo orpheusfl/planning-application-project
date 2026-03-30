@@ -35,11 +35,10 @@ BOUNDARIES_DIR = Path(__file__).resolve().parent.parent / "boundaries"
 # Sub-score (micro-interest) definitions
 # ---------------------------------------------------------------------------
 SUB_SCORES: list[dict[str, str]] = [
+    {"column": "score_disturbance", "label": "Level of disturbance"},
     {"column": "score_scale", "label": "Scale of development"},
-    {"column": "score_local_impact", "label": "Positive local impact"},
-    {"column": "score_controversy", "label": "Controversy"},
-    {"column": "score_environment", "label": "Environmental impact"},
-    {"column": "score_housing", "label": "Affordable housing"},
+    {"column": "score_housing", "label": "Effect on housing prices"},
+    {"column": "score_environment", "label": "Environmental & community impact"},
 ]
 
 # ---------------------------------------------------------------------------
