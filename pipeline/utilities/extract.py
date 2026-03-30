@@ -387,7 +387,7 @@ def get_current_applications(session: requests.Session) -> List[Dict[str, str]]:
             break
 
         # comment out later
-        if page > 3:
+        if page > 1:
             break
 
         applications.extend(extracted_apps)
@@ -481,13 +481,9 @@ def enrich_applications(
 
 def get_existing_application_ids(conn: Any) -> Set[str]:
     """Retrieves application IDs already stored in the database as a fast-lookup Set."""
-    if conn is None:
-        logger.warning(
-            "No database connection provided. Skipping existing ID check.")
-        return set()
 
     with conn.cursor() as cursor:
-        cursor.execute("SELECT application_number FROM application")
+        cursor.execute("SELECT application_numbe FROM application")
 
         return {row[0] for row in cursor.fetchall()}
 
@@ -526,29 +522,3 @@ def run_scraper(conn: Any) -> List[Dict[str, Any]]:
     logger.info("New applications to enrich: %d", len(new_applications))
 
     return enrich_applications(session, new_applications)
-
-
-# if __name__ == "__main__":
-#     applications = run_scraper(None)
-
-#     highest_doc_count = 0
-
-#     highest_application_source = ""
-
-#     application_types = set()
-
-#     for app in applications:
-#         for pdf in app.get("pdfs", []):
-#             application_types.add(pdf.get("document_type", "Unknown"))
-#         doc_count = len(app.get("pdfs", []))
-
-#         if doc_count > highest_doc_count:
-#             highest_doc_count = doc_count
-#             highest_application_source = app.get(
-#                 "application_page_url", "Unknown")
-
-#     print(
-#         f"Application with most documents: {highest_application_source} ({highest_doc_count} PDFs)")
-
-#     print(
-#         f"Unique application types encountered: {', '.join(application_types)}")
