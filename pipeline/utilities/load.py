@@ -142,7 +142,8 @@ def load_application_to_rds(conn, table_name: str, application_data: dict,
         table_name: Name of the target table
         application_data: Dict with application_number, validation_date, address,
                          postcode, lat, long, ai_summary, public_interest_score,
-                         application_page_url, document_page_url
+                         score_disturbance, score_scale, score_housing,
+                         score_environment, application_page_url, document_page_url
         foreign_keys: Dict with 'council_id', 'status_type_id', 'application_type_id'
 
     Returns:
@@ -154,9 +155,11 @@ def load_application_to_rds(conn, table_name: str, application_data: dict,
                 INSERT INTO {table_name} (
                     application_number, validation_date, address, postcode,
                     lat, long, ai_summary, public_interest_score,
+                    score_disturbance, score_scale, score_housing,
+                    score_environment,
                     council_id, status_type_id, application_type_id,
                     application_page_url, document_page_url
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING application_id
             """
             cursor.execute(insert_query, (
@@ -168,6 +171,10 @@ def load_application_to_rds(conn, table_name: str, application_data: dict,
                 application_data['long'],
                 application_data['ai_summary'],
                 application_data['public_interest_score'],
+                application_data.get('score_disturbance'),
+                application_data.get('score_scale'),
+                application_data.get('score_housing'),
+                application_data.get('score_environment'),
                 foreign_keys['council_id'],
                 foreign_keys['status_type_id'],
                 foreign_keys['application_type_id'],
@@ -216,8 +223,9 @@ def load_application_data(conn, council_name: str,
     """Load application data to database.
 
     The application_info dict should contain: application_number, validation_date,
-    address, postcode, lat, long, ai_summary, public_interest_score, status_type,
-    application_type, application_page_url, document_page_url.
+    address, postcode, lat, long, ai_summary, public_interest_score,
+    score_disturbance, score_scale, score_housing, score_environment,
+    status_type, application_type, application_page_url, document_page_url.
 
     Validates environment variables, retrieves necessary foreign key IDs, and loads
     the application data to the RDS.

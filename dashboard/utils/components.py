@@ -10,6 +10,7 @@ import pydeck as pdk
 
 from . import filters
 from .config import (
+    BRAND_BLUE,
     CSS,
     CLUSTER_LIST_HEADER_PX,
     CLUSTER_LIST_ITEM_PX,
@@ -22,10 +23,11 @@ from .config import (
     SCROLL_OFFSET_PX,
     SEARCH_RESULTS_LIMIT,
     STATUS_CSS_CLASSES,
-    TOWER_HAMLETS_CENTER,
+    SUB_SCORES,
+    LONDON_CENTER,
 )
 from .db import get_connection
-from .geo import generate_circle_polygon, geocode_postcode
+from .geo import generate_circle_polygon, geocode_postcode, geojson_bounds
 from .subscribers import (
     deactivate_all_subscriptions,
     deactivate_subscriptions,
@@ -150,7 +152,7 @@ def _show_subscribe_dialog() -> None:
     email = st.text_input("Email address", placeholder="you@example.com")
     postcode = st.text_input("Your postcode", placeholder="e.g. E1 4TT")
     radius = st.slider("Radius (miles)", 0.1, 2.0, 0.5, step=0.1)
-    min_score = st.slider("Minimum interest score", 1, 10, 1)
+    min_score = st.slider("Minimum interest score", 1, 5, 1)
     consent = st.checkbox("I agree to receive weekly email updates")
 
     # Check for existing subscriptions after the main form fields
@@ -283,11 +285,14 @@ def _show_unsubscribe_dialog() -> None:
 # ---------------------------------------------------------------------------
 def render_sidebar(
     applications: pd.DataFrame,
-) -> tuple[pd.DataFrame, dict | None]:
-    """Render sidebar filters and return *(filtered_df, location_info)*.
+) -> tuple[pd.DataFrame, dict | None, str | None]:
+    """Render sidebar filters and return *(filtered_df, location_info, selected_council)*.
 
     *location_info* is a dict with ``lat``, ``lon``, ``radius_miles`` when a
     postcode filter is active, otherwise ``None``.
+
+    *selected_council* is the council name chosen in the sidebar, or ``None``
+    when only one council exists (auto-selected).
     """
     st.sidebar.image(LOGO_PATH, width=220)
     st.sidebar.caption("Tower Hamlets planning applications")
@@ -295,12 +300,31 @@ def render_sidebar(
     df = applications.copy()
     location_info = None
 
+    # Council
+    councils = sorted(applications["council"].unique().tolist())
+
+    if len(councils) > 1:
+        council_options = ["All"] + councils
+
+        # A fresh map boundary click overrides the selectbox — consume once
+        map_picked_council = st.session_state.pop("map_selected_council", None)
+        if map_picked_council and map_picked_council in council_options:
+            st.session_state["council_selectbox"] = map_picked_council
+
+        selected_council = st.sidebar.selectbox(
+            "Council", council_options, key="council_selectbox",
+        )
+        df = filters.by_council(df, selected_council)
+    else:
+        # Single council — use .get() to persist across reruns (no selectbox)
+        selected_council = st.session_state.get("map_selected_council")
+
     # Date range
     min_date = df["date"].min().date()
     max_date = df["date"].max().date()
     days_in_data = (max_date - min_date).days
-    if days_in_data >= 7:
-        default_start = (datetime.now() - timedelta(days=7)).date()
+    if days_in_data >= 30:
+        default_start = (datetime.now() - timedelta(days=30)).date()
     else:
         default_start = min_date
     date_range = st.sidebar.date_input(
@@ -318,8 +342,23 @@ def render_sidebar(
     df = filters.by_status(df, selected_status)
 
     # Interest score
-    min_score = st.sidebar.slider("Minimum interest score", 1, 10, 1)
+    min_score = st.sidebar.slider(
+        "Minimum interest score", 1, 5, 1,
+        help="The interest score is the average of the four micro-interest "
+             "scores: Disturbance, Scale, Housing, and Environment. "
+             "Use this to filter out applications below a certain "
+             "overall interest level.",
+    )
     df = filters.by_min_score(df, min_score)
+
+    # Micro-interest sub-scores
+    with st.sidebar.expander("Filter by micro-interests"):
+        for sub in SUB_SCORES:
+            min_sub = st.slider(
+                sub["label"], 1, 5, 1, key=f"sub_{sub['column']}"
+            )
+            if min_sub > 1:
+                df = filters.by_min_sub_score(df, sub["column"], min_sub)
 
     # Location
     st.sidebar.markdown("---")
@@ -360,6 +399,7 @@ def render_sidebar(
 
     # Clear persisted map selection when any filter changes
     filter_fingerprint = (
+        selected_council,
         date_range,
         selected_status,
         min_score,
@@ -377,29 +417,67 @@ def render_sidebar(
     else:
         st.session_state["_filters_changed"] = False
 
-    return df, location_info
+    return df, location_info, selected_council
 
 
 # ---------------------------------------------------------------------------
 # Map
 # ---------------------------------------------------------------------------
-def render_map(df: pd.DataFrame, location_info: dict | None = None):
+def render_map(
+    df: pd.DataFrame,
+    location_info: dict | None = None,
+    council_boundaries: dict | None = None,
+    selected_council: str | None = None,
+):
     """Render the pydeck map and return the selection event."""
-    layers = [
-        pdk.Layer(
-            "ScatterplotLayer",
-            data=df,
-            id="applications",
-            get_position=["long", "lat"],
-            get_color="color",
-            get_radius=60,
-            radius_min_pixels=5,
-            radius_max_pixels=15,
-            pickable=True,
-            auto_highlight=True,
-            highlight_color=[255, 200, 0, 200],
+    layers = []
+
+    # Council boundary polygons — rendered beneath application markers
+    if council_boundaries:
+        for council_name, geojson in council_boundaries.items():
+            is_selected = council_name == selected_council
+            # Selected: nearly invisible fill but full-opacity border
+            # Unselected: subtle fill with softer border
+            fill_color = [24, 0, 173, 8] if is_selected else [24, 0, 173, 40]
+            line_color = [24, 0, 173, 255] if is_selected else [
+                24, 0, 173, 160]
+            line_width = 3 if is_selected else 1
+
+            layers.append(
+                pdk.Layer(
+                    "GeoJsonLayer",
+                    data=geojson,
+                    id=f"boundary-{council_name}",
+                    opacity=1,
+                    get_fill_color=fill_color,
+                    get_line_color=line_color,
+                    get_line_width=line_width,
+                    line_width_min_pixels=line_width,
+                    pickable=not is_selected,
+                    auto_highlight=not is_selected,
+                    highlight_color=[0, 0, 0, 0] if is_selected else [
+                        24, 0, 173, 40],
+                )
+            )
+
+    # Only show application markers when a council boundary is selected
+    if selected_council and selected_council != "All":
+        layers.append(
+            pdk.Layer(
+                "ScatterplotLayer",
+                data=df,
+                id="applications",
+                get_position=["long", "lat"],
+                get_color="color",
+                get_radius=60,
+                radius_min_pixels=5,
+                radius_max_pixels=15,
+                pickable=True,
+                auto_highlight=True,
+                highlight_color=[255, 200, 0, 200],
+                opacity=0.6,
+            )
         )
-    ]
 
     if location_info:
         circle_coords = generate_circle_polygon(
@@ -427,9 +505,16 @@ def render_map(df: pd.DataFrame, location_info: dict | None = None):
             location_info["lon"],
             14,
         )
+    elif (selected_council
+          and selected_council != "All"
+          and council_boundaries
+          and selected_council in council_boundaries):
+        center_lat, center_lon, zoom = geojson_bounds(
+            council_boundaries[selected_council]
+        )
     else:
-        center_lat = TOWER_HAMLETS_CENTER["latitude"]
-        center_lon = TOWER_HAMLETS_CENTER["longitude"]
+        center_lat = LONDON_CENTER["latitude"]
+        center_lon = LONDON_CENTER["longitude"]
         zoom = MAP_ZOOM
 
     view_state = pdk.ViewState(
@@ -447,6 +532,12 @@ def render_map(df: pd.DataFrame, location_info: dict | None = None):
         },
     }
 
+    # Use a key that incorporates the selected council so that pydeck's
+    # internal selection state is reset when the council changes.  This
+    # prevents deck.gl from painting its own opaque selection highlight
+    # over a boundary polygon we have already processed.
+    map_key = f"main_map_{selected_council or 'none'}"
+
     return st.pydeck_chart(
         pdk.Deck(
             layers=layers,
@@ -456,7 +547,7 @@ def render_map(df: pd.DataFrame, location_info: dict | None = None):
         ),
         on_select="rerun",
         selection_mode="single-object",
-        key="main_map",
+        key=map_key,
     )
 
 
@@ -478,9 +569,21 @@ def get_selected_from_map(
     filters_changed = st.session_state.get("_filters_changed", False)
 
     if not filters_changed and event and event.selection:
-        indices = event.selection.get("indices", {}).get("applications", [])
-        if indices:
-            idx = indices[0]
+        indices = event.selection.get("indices", {})
+
+        # Check for council boundary click first
+        for layer_id, layer_indices in indices.items():
+            if layer_id.startswith("boundary-") and layer_indices:
+                council_name = layer_id.removeprefix("boundary-")
+                st.session_state["map_selected_council"] = council_name
+                st.session_state.pop("map_selected_app_id", None)
+                st.session_state.pop("map_selected_postcode", None)
+                st.rerun()
+
+        # Then check for application marker click
+        app_indices = indices.get("applications", [])
+        if app_indices:
+            idx = app_indices[0]
             # Only treat as fresh if this is a new click, not a replayed one
             event_key = ("map_click", idx)
             already_processed = (
@@ -682,12 +785,25 @@ def render_detail(application: pd.Series) -> None:
     with col_score:
         score = application['public_interest_score']
         st.markdown(
-            f"**Interest Score** {_score_pill(score, f'{int(score)}/10')}",
+            f"**Interest Score** {_score_pill(score, f'{int(score)}/5')}",
             unsafe_allow_html=True,
         )
 
     # Date
     st.markdown(f"**Date:** {application['date'].strftime('%d %B %Y')}")
+
+    # Sub-score breakdown
+    has_sub_scores = any(
+        application.get(sub["column"], 0) > 0 for sub in SUB_SCORES
+    )
+    if has_sub_scores:
+        with st.expander("Interest score breakdown"):
+            for sub in SUB_SCORES:
+                sub_val = int(application.get(sub["column"], 0))
+                st.markdown(
+                    f"{sub['label']}: {_score_pill(sub_val, f'{sub_val}/5')}",
+                    unsafe_allow_html=True,
+                )
 
     # AI summary
     st.markdown("#### Summary")

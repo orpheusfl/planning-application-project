@@ -7,6 +7,7 @@ import re
 import shutil
 import tempfile
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
 
@@ -20,6 +21,9 @@ from dotenv import load_dotenv
 from selenium.webdriver import Chrome
 from selenium.webdriver.chrome.options import Options
 
+from utilities.extract import extract_csrf_token
+from utilities.config import LLM_MODEL, MAX_PARALLEL_LLM_CALLS, SUB_SCORE_RUBRICS
+
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -29,21 +33,7 @@ load_dotenv()  # Load environment variables from .env file
 POSTCODE_REGEX = r"\b[A-Z]{1,2}\d[A-Z\d]?\s?\d[A-Z]{2}\b"
 
 
-def extract_csrf_token(html_content: str) -> str | None:
-    """Extract CSRF security token from HTML.
-
-    Args:
-        html_content: HTML content to search for token
-
-    Returns:
-        CSRF token value or None if not found
-    """
-    soup = BeautifulSoup(html_content, "html.parser")
-    csrf_input = soup.find("input", {"name": "_csrf"})
-
-    if csrf_input and isinstance(csrf_input.get("value"), str):
-        return csrf_input.get("value")
-    return None
+INCOMPLETE_POSTCODE_REGEX = r"\b[A-Z]{1,2}\d{1,2}[A-Z]?\b"
 
 
 class Application:
@@ -84,11 +74,16 @@ class Application:
         self.application_page_url = urls.get('application_page_url')
         self.document_page_url = urls.get('document_page_url')
         self.public_interest_score: int | None = None
+        self.score_scale: int | None = None
+        self.score_disturbance: int | None = None
+        self.score_environment: int | None = None
+        self.score_housing: int | None = None
 
         # Process and store address (no network calls)
-        address_data = self.format_address(address)
-        self.address = address_data['address']
-        self.postcode = address_data['postcode']
+
+        self.postcode = Application.extract_postcode_from_address(address)
+        self.address = Application.format_address_by_removing_postcode(
+            address, self.postcode)
 
         # Store raw inputs for processing
         self._raw_description = description
@@ -118,40 +113,51 @@ class Application:
                 "Error parsing validation date '%s': %s", validation_date, e, exc_info=True)
             raise
 
-    def format_address(self, address: str) -> dict:
-        """Extract unique elements from the address string.
+    @staticmethod
+    def extract_postcode_from_address(address: str) -> str:
+        """Extract postcode from address string using regex. If only a partial postcode is found, return it for LLM validation later.
 
         Args:
             address: Full address string (e.g., "36A Grove Road, London, E3 5AX")
 
         Returns:
-            Dict with 'street' (str), 'city' (str), 'postalcode' (str), and 'country' (str) keys
-            Example: {'street': '36A Grove Road', 'city': 'London',
-                'postalcode': 'E35AX', 'country': 'UK'}
+            Extracted postcode string (e.g., "E3 5AX") or empty string if not found
+        """
+        # Attempt to find a complete postcode first
+        match = re.search(POSTCODE_REGEX, address)
+        if match:
+            return match.group(0)
+
+        # If no complete postcode, look for an incomplete one (e.g., "E14", "W1A")
+        match = re.search(INCOMPLETE_POSTCODE_REGEX, address)
+        if match:
+            incomplete_postcode = match.group(0)
+            logger.info("Extracted incomplete postcode: %s",
+                        incomplete_postcode)
+            return incomplete_postcode
+
+        logger.warning("No postcode found in address: %s", address)
+        return ""
+
+    @staticmethod
+    def format_address_by_removing_postcode(address: str, postcode: str) -> str:
+        """ Remove postcode from address string to create a 'clean' address field for database storage.
+
+        Args:
+            address: Full address string (e.g., "36A Grove Road, London, E3 5AX")
+            postcode: Postcode string to remove from the address (e.g., "E3 5AX")
+
+        Returns:
+            Address string with postcode removed (e.g., "36A Grove Road, London")
         """
 
         address = address.strip()
 
-        # Try to extract a complete postcode first
-        postcode_match = re.search(POSTCODE_REGEX, address)
-        if postcode_match:
-            postcode = postcode_match.group(0)
-        else:
-            # Fall back to incomplete postcode pattern (e.g., "E14", "W1A")
-            # This allows LLM to validate and complete incomplete postcodes later
-            incomplete_postcode_regex = r"\b[A-Z]{1,2}\d{1,2}[A-Z]?\b"
-            postcode_match = re.search(incomplete_postcode_regex, address)
-            if not postcode_match:
-                logger.warning("No postcode found in address: %s", address)
-                raise ValueError(
-                    f"Could not extract postcode from address: {address}")
-            postcode = postcode_match.group(0)
-            logger.info("Extracted incomplete postcode: %s", postcode)
+        # Remove any postcode from the address for the 'address' field in the database
+        formatted_address = re.sub(
+            re.escape(postcode), '', address).strip(', ')
 
-        address_without_postcode = address.replace(
-            postcode, "").strip(", ").strip()
-
-        return {'address': address_without_postcode, 'postcode': postcode}
+        return formatted_address
 
     def geocode_postcode(self, postcode: str) -> tuple[float, float] | None:
         """Convert a UK postcode to (lat, lon) via postcodes.io.
@@ -208,52 +214,37 @@ class Application:
         text = ' '.join(text.split())
         return text
 
-    def build_llm_analysis_prompt(
+    def _build_summary_prompt(
             self,
-            pdf_data: list[dict],
+            formatted_pdf_text: str,
             original_description: str,
             full_address: str,
-            incomplete_postcode: str) -> str:
-        """Build structured prompt for LLM analysis combining PDF text and description.
+            postcode_instructions: str) -> str:
+        """Build a focused prompt that requests only the summary and postcode.
 
         Args:
-            pdf_data: List of dicts with 'document_type' and 'text' keys from extracted PDFs
+            formatted_pdf_text: Pre-formatted PDF text block
             original_description: Original application description
             full_address: Complete address including postcode
-            incomplete_postcode: Postcode extracted from address (may be incomplete)
+            postcode_instructions: Instructions for postcode validation
 
         Returns:
-            Prompt string for LLM analysis requesting JSON output
+            Prompt string requesting JSON with 'summary' and 'postcode' fields
         """
-        formatted_pdf_text = "\n\n".join(
-            f"{pdf['document_type'].upper()}:\n{pdf['text']}"
-            for pdf in pdf_data
-        )
+        return f"""Analyze this planning application and return a JSON response with two fields:
 
-        # Determine postcode instructions based on whether it looks complete
-        postcode_instructions = self._get_postcode_instructions(
-            postcode=incomplete_postcode)
+1. "summary": A 2-3 sentence summary highlighting key details residents need to
+know (housing units, effects on neighboring property value, public amenities, traffic impact, transport links, affordable
+housing percentage, environmental concerns). CRITICAL: Include inline references
+directly within the summary text showing exactly which PDF section each fact came from.
+Use the format: "...specific detail (<document_type>, page X)..." embedded
+throughout the summary. For example: "The scheme includes 500 units of housing
+(source: Application Form, page 2) with 25% affordable housing (source: Design Report, page 5)..."
 
-        prompt = f"""Analyze this planning application and return a JSON response with three fields:
-                    1. "summary": A 2-3 sentence summary highlighting key details residents need to
-                    know (housing units, effects on neighboring property value, public amenities, traffic impact, transport links, affordable
-                    housing percentage, environmental concerns). CRITICAL: Include inline references
-                    directly within the summary text showing exactly which PDF section each fact came from.
-                    Use the format: "...specific detail (<document_type>, page X)..." embedded
-                    throughout the summary. For example: "The scheme includes 500 units of housing
-                    (source: Application Form, page 2) with 25% affordable housing (source: Design Report, page 5)..."
-                    2. "public_interest_score": An integer from 1-10 assessing public interest level. 
-                    The public interest score should be the average of 5 sub-scores (each 1-10) 
-                    for: a) scale of development
-                        b) positive impact on local area, such as improving local amenities like a leisure centre or park or transport links
-                        c) level of controversy in the documents, especially if there is concern for cultural/historical sites, or significant opposition from local residents.
-                        d) environmental impact, especially if there are concerns about green space, pollution, or sustainability
-                        e) affordable housing provision, with higher scores for more affordable housing
-                    3. "postcode": The complete and correct UK postcode for this application.
-                    {postcode_instructions}
-                
-                        
-                    Respond ONLY with valid JSON, no additional text.
+2. "postcode": The complete and correct UK postcode for this application.
+{postcode_instructions}
+
+Respond ONLY with valid JSON, no additional text.
 
                     Original Application Description:
                     {original_description}
@@ -271,10 +262,80 @@ class Application:
                     Use UK English and be concise, but using full sentences. Avoid generic statements
                     and focus on specific details that would be relevant to local residents.
 
-                    Return format:
-                    {{"summary": "...", "public_interest_score": <number>, "postcode": "..."}}"""
+Return format:
+{{"summary": "...", "postcode": "..."}}"""
 
-        return prompt
+    def _build_sub_score_prompt(
+            self,
+            score_name: str,
+            formatted_pdf_text: str,
+            original_description: str,
+            full_address: str) -> str:
+        """Build a focused prompt that requests a single sub-score.
+
+        Args:
+            score_name: Key into SUB_SCORE_RUBRICS (e.g. 'score_disturbance')
+            formatted_pdf_text: Pre-formatted PDF text block
+            original_description: Original application description
+            full_address: Complete address including postcode
+
+        Returns:
+            Prompt string requesting JSON with one score field
+        """
+        rubric = SUB_SCORE_RUBRICS[score_name]
+
+        return f"""Analyze this planning application and return a JSON response with one field:
+
+{rubric}
+
+Respond ONLY with valid JSON, no additional text.
+
+Original Application Description:
+{original_description}
+
+Full Address:
+{full_address}
+
+Extracted PDF Content:
+{formatted_pdf_text}
+
+Return format:
+{{"{score_name}": <1-5>}}"""
+
+    def _call_llm(self, client: openai.OpenAI, system_message: str, prompt: str) -> dict:
+        """Make a single LLM API call and return the parsed JSON response.
+
+        This is the isolated unit of work submitted to the thread pool.
+
+        Args:
+            client: Configured OpenAI client (thread-safe)
+            system_message: System role content for the chat completion
+            prompt: User role content for the chat completion
+
+        Returns:
+            Parsed JSON dict from the LLM response
+        """
+        start = time.perf_counter()
+
+        response = client.chat.completions.create(
+            model=LLM_MODEL,
+            messages=[
+                {"role": "system", "content": system_message},
+                {"role": "user", "content": prompt},
+            ],
+        )
+
+        elapsed = time.perf_counter() - start
+        logger.info("LLM call completed in %.2fs", elapsed)
+
+        json_text = response.choices[0].message.content
+
+        try:
+            return json.loads(json_text)
+        except json.JSONDecodeError as e:
+            logger.error("Failed to parse LLM response as JSON: %s", e)
+            logger.error("Received response: %s", json_text)
+            raise ValueError(f"Invalid JSON from LLM: {str(e)}") from e
 
     def _get_postcode_instructions(self, postcode: str) -> str:
         """Generate postcode validation instructions based on postcode completeness.
@@ -294,7 +355,9 @@ class Application:
 
         return (
             f"The postcode '{postcode}' appears incomplete or invalid. Use the "
-            f"PDF content and full address to find the complete, correct postcode."
+            f"PDF content and full address to find the complete, correct postcode. "
+            f"If there is no postcode, try to find it based on the address and location details in the documents. "
+            f"If you cannot find a valid postcode, find a postcode that is nearest to the location of the development based on the address and details in the documents."
         )
 
     def _is_valid_postcode(self, postcode: str) -> bool:
@@ -341,48 +404,141 @@ class Application:
                 "Error initializing OpenAI client: %s", e, exc_info=True)
             raise
 
-    def analyse_pdf_text(self, prompt: str, api_key: str) -> dict:
-        """Analyze prompt using OpenAI LLM API and return structured output.
+    def analyse_pdf_text(self, pdf_data: list[dict], api_key: str) -> dict:
+        """Analyse application PDFs by dispatching parallel LLM calls.
+
+        Sends five concurrent requests — one for the summary/postcode and one
+        per sub-score — then merges the results into a single dict.
 
         Args:
-            prompt: Prompt string for LLM analysis
+            pdf_data: List of dicts with 'document_type' and 'text' keys
             api_key: OpenAI API key for authentication
 
         Returns:
-            Dict with 'ai_summary' (str), 'public_interest_score' (int), and 'postcode' (str) keys
+            Dict with 'ai_summary', 'public_interest_score', 'score_*', and 'postcode' keys
         """
         client = self._setup_openai_client(api_key)
-
-        response = client.chat.completions.create(
-            model="gpt-5-nano",
-            messages=[
-                {"role": "system", "content": "You are a planning analyst that provides concise, resident-focused summaries. Always respond with valid JSON only."},
-                {"role": "user", "content": prompt}
-            ]
+        system_message = (
+            "You are a planning analyst that provides concise, "
+            "resident-focused summaries. Always respond with valid JSON only."
         )
 
-        logger.info("Received response from OpenAI API")
+        formatted_pdf_text = "\n\n".join(
+            f"{pdf['document_type'].upper()}:\n{pdf['text']}"
+            for pdf in pdf_data
+        )
+        postcode_instructions = self._get_postcode_instructions(self.postcode)
 
-        json_text = response.choices[0].message.content
+        summary_prompt = self._build_summary_prompt(
+            formatted_pdf_text,
+            self._raw_description,
+            self.address,
+            postcode_instructions,
+        )
 
-        try:
-            result = json.loads(json_text)
-        except json.JSONDecodeError as e:
-            logger.error("Failed to parse LLM response as JSON: %s", e)
-            logger.error("Received response: %s", json_text)
-            raise ValueError(f"Invalid JSON from LLM: {str(e)}") from e
+        score_prompts = {
+            score_name: self._build_sub_score_prompt(
+                score_name,
+                formatted_pdf_text,
+                self._raw_description,
+                self.address,
+            )
+            for score_name in SUB_SCORE_RUBRICS
+        }
 
-        try:
-            return {
-                'ai_summary': result['summary'],
-                'public_interest_score': result['public_interest_score'],
-                'postcode': result.get('postcode', '')
-            }
-        except KeyError as e:
-            logger.error("Missing required field in LLM response: %s", e)
-            logger.error("Parsed JSON: %s", result)
+        total_start = time.perf_counter()
+
+        # Dispatch all LLM calls in parallel and collect results
+        merged = self._dispatch_parallel_llm_calls(
+            client, system_message, summary_prompt, score_prompts,
+        )
+
+        total_elapsed = time.perf_counter() - total_start
+        logger.info(
+            "All %s parallel LLM calls completed in %.2fs",
+            len(score_prompts) + 1, total_elapsed,
+        )
+
+        # Validate and assemble the final result
+        return self._assemble_analysis_result(merged)
+
+    def _dispatch_parallel_llm_calls(
+        self,
+        client: openai.OpenAI,
+        system_message: str,
+        summary_prompt: str,
+        score_prompts: dict[str, str],
+    ) -> dict:
+        """Submit summary + sub-score prompts to the LLM in parallel and merge results.
+
+        Each call returns a small JSON dict. The dicts are merged into one
+        combined result containing the summary, postcode, and every sub-score.
+
+        Args:
+            client: Configured OpenAI client
+            system_message: System-level instruction for the LLM
+            summary_prompt: Prompt requesting the summary and postcode
+            score_prompts: Mapping of score name → prompt for each sub-score
+
+        Returns:
+            Merged dict of all LLM response fields
+        """
+        merged: dict = {}
+        futures: dict[str, object] = {}
+
+        with ThreadPoolExecutor(max_workers=MAX_PARALLEL_LLM_CALLS) as executor:
+            # 1 summary/postcode call + 4 independent sub-score calls
+            futures["summary"] = executor.submit(
+                self._call_llm, client, system_message, summary_prompt,
+            )
+            for score_name, prompt in score_prompts.items():
+                futures[score_name] = executor.submit(
+                    self._call_llm, client, system_message, prompt,
+                )
+
+            # Collect results as each future completes
+            for label, future in futures.items():
+                result = future.result()
+                merged.update(result)
+                logger.info("Received result for '%s'", label)
+
+        return merged
+
+    def _assemble_analysis_result(self, merged: dict) -> dict:
+        """Validate merged LLM results and compute the overall interest score.
+
+        Args:
+            merged: Combined dict from all parallel LLM calls
+
+        Returns:
+            Final analysis dict with ai_summary, public_interest_score,
+            individual sub-scores, and postcode
+
+        Raises:
+            ValueError: If any required field is missing from the merged results
+        """
+        sub_score_names = list(SUB_SCORE_RUBRICS.keys())
+
+        missing = [s for s in sub_score_names if s not in merged]
+        if missing:
             raise ValueError(
-                f"LLM response missing required field: {str(e)}") from e
+                f"LLM responses missing required fields: {missing}")
+
+        if "summary" not in merged:
+            raise ValueError("LLM response missing required field: 'summary'")
+
+        sub_scores = [merged[s] for s in sub_score_names]
+        public_interest_score = round(sum(sub_scores) / len(sub_scores))
+
+        return {
+            'ai_summary': merged['summary'],
+            'public_interest_score': public_interest_score,
+            'score_disturbance': merged['score_disturbance'],
+            'score_scale': merged['score_scale'],
+            'score_housing': merged['score_housing'],
+            'score_environment': merged['score_environment'],
+            'postcode': merged.get('postcode', ''),
+        }
 
     def _get_browser_cookies(self, url: str) -> tuple[list[dict], str | None]:
         """Retrieve cookies from browser after navigating to URL.
@@ -612,17 +768,17 @@ class Application:
                 )
                 raise
 
-        logger.info("Building LLM analysis prompt")
-        prompt = self.build_llm_analysis_prompt(
-            pdf_texts, self._raw_description, self.address, self.postcode)
-
-        logger.info("Analyzing with OpenAI LLM")
-        analysis = self.analyse_pdf_text(prompt, api_key)
+        logger.info("Analyzing with parallel LLM calls")
+        analysis = self.analyse_pdf_text(pdf_texts, api_key)
 
         logger.info("PDF analysis completed successfully")
         return {
             'ai_summary': analysis['ai_summary'],
             'public_interest_score': analysis['public_interest_score'],
+            'score_scale': analysis['score_scale'],
+            'score_disturbance': analysis['score_disturbance'],
+            'score_environment': analysis['score_environment'],
+            'score_housing': analysis['score_housing'],
             'postcode': analysis['postcode']
         }
 
@@ -658,6 +814,10 @@ class Application:
                 self._raw_pdfs, session, api_key)
             self.ai_summary = pdf_analysis['ai_summary']
             self.public_interest_score = pdf_analysis['public_interest_score']
+            self.score_scale = pdf_analysis['score_scale']
+            self.score_disturbance = pdf_analysis['score_disturbance']
+            self.score_environment = pdf_analysis['score_environment']
+            self.score_housing = pdf_analysis['score_housing']
 
             # Update postcode with LLM-validated version if provided
             postcode = pdf_analysis.get('postcode')
@@ -749,6 +909,10 @@ class Application:
             'status_type': self.status,
             'ai_summary': self.ai_summary,
             'public_interest_score': self.public_interest_score,
+            'score_scale': self.score_scale,
+            'score_disturbance': self.score_disturbance,
+            'score_environment': self.score_environment,
+            'score_housing': self.score_housing,
             'application_page_url': self.application_page_url,
             'document_page_url': self.document_page_url
         }
