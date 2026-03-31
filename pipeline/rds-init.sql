@@ -1,5 +1,3 @@
--- rds-init.sql
-
 -- ==========================================
 -- 1. Create Independent/Reference Tables
 -- ==========================================
@@ -24,7 +22,7 @@ CREATE TABLE IF NOT EXISTS decision_type (
     decision_type VARCHAR(100) NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS subscribers (
+CREATE TABLE IF NOT EXISTS subscriber (
     subscriber_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     email VARCHAR(255) NOT NULL,
     postcode VARCHAR(10) NOT NULL,
@@ -91,15 +89,15 @@ CREATE TABLE IF NOT EXISTS application (
 -- ==========================================
 
 -- Foreign Key Indexes (Crucial for JOIN performance and cascading deletes)
-CREATE INDEX idx_application_council_id ON application(council_id);
-CREATE INDEX idx_application_status_type_id ON application(status_type_id);
-CREATE INDEX idx_application_application_type_id ON application(application_type_id);
+CREATE INDEX IF NOT EXISTS idx_application_council_id ON application(council_id);
+CREATE INDEX IF NOT EXISTS idx_application_status_type_id ON application(status_type_id);
+CREATE INDEX IF NOT EXISTS idx_application_application_type_id ON application(application_type_id);
 
 -- Search Indexes (Optimized for common lookup patterns)
-CREATE INDEX idx_application_number ON application(application_number);
-CREATE INDEX idx_application_coordinates ON application(lat, long);
+CREATE INDEX IF NOT EXISTS idx_application_number ON application(application_number);
+CREATE INDEX IF NOT EXISTS idx_application_coordinates ON application(lat, long);
 
 -- Subscriber Indexes
-CREATE INDEX idx_subscribers_email ON subscribers(email);
+CREATE INDEX IF NOT EXISTS idx_subscriber_email ON subscriber(email);
 -- Partial index optimized for querying only active subscribers
-CREATE INDEX idx_active_subscribers ON subscribers(email) WHERE unsubscribed_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_active_subscriber ON subscriber(email) WHERE unsubscribed_at IS NULL;

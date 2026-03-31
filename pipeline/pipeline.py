@@ -40,7 +40,11 @@ def deduplicate_applications(applications: list[dict]) -> list[dict]:
     """
     seen: dict[str, dict] = {}
     for app in applications:
-        seen[app.get('application_number')] = app
+        app_id = app.get('application_number')
+        if app_id in seen:
+            logger.info(
+                "Duplicate found: %s — keeping weekly-scraper version", app_id)
+        seen[app_id] = app
     return list(seen.values())
 
 
@@ -138,18 +142,28 @@ def process_applications(conn, raw_applications: list[dict], api_key: str) -> li
     Returns a list of successfully processed application dicts.
     """
     processed = []
+    skipped = []
 
     for raw_app in raw_applications:
         result = process_application(conn, raw_app, api_key)
 
         if result is not None:
             processed.append(result)
+        else:
+            app_id = raw_app.get('application_number', 'Unknown')
+            skipped.append(app_id)
 
         if len(processed) >= MAX_APPLICATIONS_PER_RUN:
             logger.info("Reached the per-run limit of %d applications.",
                         MAX_APPLICATIONS_PER_RUN)
             break
 
+    if skipped:
+        logger.warning("Skipped %d applications: %s",
+                       len(skipped), ", ".join(skipped))
+
+    logger.info("Processing complete: %d processed, %d skipped",
+                len(processed), len(skipped))
     return processed
 
 
