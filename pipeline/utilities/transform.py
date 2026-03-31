@@ -924,7 +924,10 @@ Return format:
             'score_environment': self.score_environment,
             'score_housing': self.score_housing,
             'application_page_url': self.application_page_url,
-            'document_page_url': self.document_page_url
+            'document_page_url': self.document_page_url,
+            'decision_date': self.decision_date,
+            'decision': self.decision,
+            'database_action': self.database_action
         }
 
 

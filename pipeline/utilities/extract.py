@@ -352,9 +352,11 @@ def parse_results_page(html_content: str) -> List[Dict[str, str]]:
     """
     soup = BeautifulSoup(html_content, "html.parser")
     apps = soup.find_all("li", class_="searchresult")
+
     logger.info("Found %d search result elements on page", len(apps))
 
     page_data = [parse_search_result(app) for app in apps]
+
     for result in page_data:
         logger.debug("Extracted: %s - %s",
                      result["application_id"], result["url"])

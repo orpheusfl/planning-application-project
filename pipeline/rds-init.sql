@@ -19,6 +19,11 @@ CREATE TABLE IF NOT EXISTS application_type (
     application_type VARCHAR(100) NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS decision_type (
+    decision_type_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    decision_type VARCHAR(100) NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS subscribers (
     subscriber_id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     email VARCHAR(255) NOT NULL,
@@ -59,6 +64,8 @@ CREATE TABLE IF NOT EXISTS application (
         CHECK (score_environment BETWEEN 1 AND 5),
     application_page_url TEXT,
     document_page_url TEXT,
+    decided_at TIMESTAMPTZ,
+    decision_type_id BIGINT,
     
     -- Foreign Key Constraints
     CONSTRAINT fk_council
@@ -72,7 +79,11 @@ CREATE TABLE IF NOT EXISTS application (
         
     CONSTRAINT fk_application_type
         FOREIGN KEY (application_type_id) 
-        REFERENCES application_type (application_type_id)
+        REFERENCES application_type (application_type_id),
+        
+    CONSTRAINT fk_decision_type
+        FOREIGN KEY (decision_type_id)
+        REFERENCES decision_type (decision_type_id)
 );
 
 -- ==========================================

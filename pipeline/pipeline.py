@@ -46,6 +46,9 @@ def main():
 
     current_applications = run_scraper_current_applications(conn)
 
+    print(f"Extracted {len(current_applications)} current applications from the website.")
+    print(f"Example ")
+
     weekly_done_applications = run_scraper_weekly_applications(conn)
 
     all_applications_to_process = current_applications + weekly_done_applications
@@ -76,13 +79,16 @@ def main():
             database_action=raw_app.get('database_action', None)
         )
 
-        app.process(api_key)
-
         app_dict = app.to_dict()
-        app_dict["decision"] = raw_app.get("decision")
-        app_dict["decision_date"] = raw_app.get("decision_date")
-        app_dict["database_action"] = raw_app.get("database_action")
-        print(app_dict)
+
+        if raw_app.get('database_action') == 'update':
+            print("UPDATE FOUND - SKIPPING LLM PROCESSING", app_dict)
+            processed_applications.append(app_dict)
+            continue
+
+        print("PROCESSING APPLICATION", app_dict)
+
+        app.process(api_key)
 
         processed_applications.append(app_dict)
 
