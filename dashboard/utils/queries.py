@@ -26,10 +26,10 @@ APPLICATIONS_SQL = """
         at.application_type  AS application_type,
         a.ai_summary        AS summary,
         a.public_interest_score,
-        COALESCE(a.score_scale, 0)        AS score_scale,
-        COALESCE(a.score_disturbance, 0)  AS score_disturbance,
-        COALESCE(a.score_environment, 0)  AS score_environment,
-        COALESCE(a.score_housing, 0)      AS score_housing,
+        a.score_scale,
+        a.score_disturbance,
+        a.score_environment,
+        a.score_housing,
         a.application_page_url,
         a.document_page_url
     FROM application a
