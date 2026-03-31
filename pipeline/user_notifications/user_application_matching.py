@@ -33,16 +33,19 @@ def get_rds_connection(rds_host: str, rds_port: int, rds_user: str,
 
 
 def get_users(conn: psycopg2.extensions.connection) -> pd.DataFrame:
-    """ Fetches all users from the database. """
+    """ Fetches all active subscribers from the database. """
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cursor:
             cursor.execute(
-                "SELECT * FROM subscribers;")
+                """SELECT email, postcode, lat, long, radius_miles,
+                          min_interest_score,
+                          min_score_disturbance, min_score_scale,
+                          min_score_housing, min_score_environment
+                     FROM subscribers
+                    WHERE unsubscribed_at IS NULL;""")
             users = cursor.fetchall()
             logging.info("Fetched %d users from the database.", len(users))
-            df = pd.DataFrame(users, columns=[
-                              "email", "postcode", "lat", "long", "radius_miles", "min_interest_score"])
-            return df
+            return pd.DataFrame(users)
     except Exception as e:
         logging.error("Error fetching users: %s", e)
         raise
@@ -63,7 +66,7 @@ def convert_df_to_gdf(df: pd.DataFrame) -> gpd.GeoDataFrame:
 
 
 def match_applications_to_users(users_gdf: gpd.GeoDataFrame, applications_gdf: gpd.GeoDataFrame) -> pd.DataFrame:
-    """ Matches applications to users based on proximity and interest score. """
+    """Matches applications to users based on proximity, interest score, and sub-scores."""
     # Convert to projected CRS (meters) for accurate buffer operation
     users_projected = users_gdf.to_crs("EPSG:3857")
 
@@ -79,8 +82,21 @@ def match_applications_to_users(users_gdf: gpd.GeoDataFrame, applications_gdf: g
     matched_df = gpd.sjoin(users_buffered, applications_gdf,
                            how="inner", predicate="intersects")
 
-    # Filter by minimum interest score
+    # Filter by minimum overall interest score
     matched_df = matched_df[matched_df["public_interest_score"]
-                            >= matched_df["min_interest"]]
+                            >= matched_df["min_interest_score"]]
+
+    # Filter by minimum sub-scores
+    sub_score_filters = [
+        ("score_disturbance", "min_score_disturbance"),
+        ("score_scale", "min_score_scale"),
+        ("score_housing", "min_score_housing"),
+        ("score_environment", "min_score_environment"),
+    ]
+    for app_col, user_col in sub_score_filters:
+        if app_col in matched_df.columns and user_col in matched_df.columns:
+            matched_df = matched_df[
+                matched_df[app_col] >= matched_df[user_col]
+            ]
 
     return matched_df

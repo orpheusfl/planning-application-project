@@ -54,8 +54,13 @@ class SubscriptionMatch:
     """Represents a subscription and its matching applications."""
 
     email: str
+    postcode: str
     radius_miles: float
     min_interest_score: int
+    min_score_disturbance: int
+    min_score_scale: int
+    min_score_housing: int
+    min_score_environment: int
     applications: list[dict]
 
     def has_matches(self) -> bool:
@@ -64,7 +69,7 @@ class SubscriptionMatch:
 
 
 def format_application_html(application: dict) -> str:
-    """Formats a single application as HTML.
+    """Formats a single application as HTML including sub-scores.
 
     Args:
         application: Dictionary containing application details
@@ -78,21 +83,86 @@ def format_application_html(application: dict) -> str:
     postcode = application.get("postcode_right", "N/A")
     url = application.get("application_page_url", "#")
 
+    disturbance = application.get("score_disturbance", "N/A")
+    scale = application.get("score_scale", "N/A")
+    housing = application.get("score_housing", "N/A")
+    environment = application.get("score_environment", "N/A")
+
     return f"""
     <div style="border: 1px solid #e5e7eb; padding: 16px; margin: 12px 0; border-radius: 4px;">
-        <h3 style="margin: 0 0 8px 0; color: #1f2937;"><a href="{url}" target="_blank" rel="noopener noreferrer">{app_id}</a></h3>
+        <h3 style="margin: 0 0 8px 0; color: #1f2937;"><a href="{url}" target="_blank" rel="noopener noreferrer" style="color: #1800ad;">{app_id}</a></h3>
         <p style="margin: 4px 0; color: #4b5563;"><strong>Description:</strong> {description}</p>
-        <p style="margin: 4px 0; color: #4b5563;"><strong>Interest Score:</strong> {score}/10</p>
+        <p style="margin: 4px 0; color: #4b5563;"><strong>Interest Score:</strong> {score}/5</p>
         <p style="margin: 4px 0; color: #4b5563;"><strong>Location:</strong> {postcode}</p>
+        <div style="margin: 8px 0 0 0; padding: 8px; background: #f3f4f6; border-radius: 4px;">
+            <p style="margin: 0 0 4px 0; font-weight: 600; color: #374151; font-size: 13px;">Micro-Interest Scores</p>
+            <table style="width: 100%; font-size: 13px; color: #4b5563;">
+                <tr><td>Disturbance</td><td style="text-align: right; font-weight: 600;">{disturbance}/5</td></tr>
+                <tr><td>Scale of development</td><td style="text-align: right; font-weight: 600;">{scale}/5</td></tr>
+                <tr><td>Effect on housing prices</td><td style="text-align: right; font-weight: 600;">{housing}/5</td></tr>
+                <tr><td>Environmental &amp; community impact</td><td style="text-align: right; font-weight: 600;">{environment}/5</td></tr>
+            </table>
+        </div>
     </div>
     """
 
 
-def create_email_html(applications: list[dict]) -> str:
-    """Creates HTML email content with matched applications.
+def format_preferences_footer_html(subscription: SubscriptionMatch) -> str:
+    """Builds HTML for the subscriber preferences footer.
+
+    Only includes score preferences where the minimum threshold is greater than 1.
+
+    Args:
+        subscription: The SubscriptionMatch containing user preferences
+
+    Returns:
+        HTML string for the preferences footer section
+    """
+    preference_rows: list[str] = []
+
+    preference_rows.append(
+        f'<tr><td style="padding: 4px 0;">Search radius</td>'
+        f'<td style="text-align: right; padding: 4px 0; font-weight: 600;">{subscription.radius_miles} miles from {subscription.postcode}</td></tr>'
+    )
+
+    score_preferences = [
+        ("Overall interest score", subscription.min_interest_score),
+        ("Disturbance", subscription.min_score_disturbance),
+        ("Scale of development", subscription.min_score_scale),
+        ("Effect on housing prices", subscription.min_score_housing),
+        ("Environmental &amp; community impact",
+         subscription.min_score_environment),
+    ]
+
+    for label, value in score_preferences:
+        if value <= 1:
+            continue
+        preference_rows.append(
+            f'<tr><td style="padding: 4px 0;">{label}</td>'
+            f'<td style="text-align: right; padding: 4px 0; font-weight: 600;">≥ {value}/5</td></tr>'
+        )
+
+    rows_html = "\n".join(preference_rows)
+
+    return f"""
+    <div style="background: #165A9E; color: white; padding: 20px; border-radius: 0 0 4px 4px; margin-top: 0;">
+        <p style="margin: 0 0 8px 0; font-weight: 600; font-size: 14px;">Your Notification Preferences</p>
+        <table style="width: 100%; font-size: 13px; color: rgba(255,255,255,0.9);">
+            {rows_html}
+        </table>
+        <p style="margin: 12px 0 0 0; font-size: 11px; color: rgba(255,255,255,0.6);">
+            Manage your preferences in the Open Plan dashboard.
+        </p>
+    </div>
+    """
+
+
+def create_email_html(applications: list[dict], subscription: SubscriptionMatch) -> str:
+    """Creates HTML email content with matched applications and subscriber preferences.
 
     Args:
         applications: List of matched applications
+        subscription: The SubscriptionMatch containing user preferences
 
     Returns:
         HTML email content
@@ -100,7 +170,7 @@ def create_email_html(applications: list[dict]) -> str:
     application_html = "".join(format_application_html(app)
                                for app in applications)
     application_count = len(applications)
-    print(applications)
+    preferences_html = format_preferences_footer_html(subscription)
 
     return f"""
     <html>
@@ -108,10 +178,10 @@ def create_email_html(applications: list[dict]) -> str:
         <style>
             body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
             .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
-            .header {{ background-color: #FF751F; color: white; padding: 20px; border-radius: 4px 4px 0 0; display: flex; justify-content: space-between; align-items: center; }}
+            .header {{ background-color: #F08B21; color: white; padding: 20px; border-radius: 4px 4px 0 0; display: flex; justify-content: space-between; align-items: center; }}
             .header-text {{ flex: 1; }}
             .header-logo {{ flex-shrink: 0; margin-left: 20px; }}
-            .content {{ background-color: #f9fafb; padding: 20px; border-radius: 0 0 4px 4px; }}
+            .content {{ background-color: #f9fafb; padding: 20px; }}
             .footer {{ text-align: center; margin-top: 20px; font-size: 12px; color: #6b7280; }}
         </style>
     </head>
@@ -133,6 +203,7 @@ def create_email_html(applications: list[dict]) -> str:
                     Review these applications and manage your preferences in the Open Plan dashboard.
                 </p>
             </div>
+            {preferences_html}
             <div class="footer">
                 <p>Open Plan | Letting you know what's happening in your neighbourhood before it happens</p>
             </div>
@@ -176,26 +247,35 @@ def send_email_via_ses(recipient_email: str, subject: str, html_body: str) -> bo
 def group_applications_by_subscription(matched_df: pd.DataFrame) -> dict[tuple, list[dict]]:
     """Groups matched applications by subscription.
 
-    Each subscription is uniquely identified by email, radius_miles, and min_interest.
+    Each subscription is uniquely identified by email, radius_miles, and score preferences.
     This ensures users with multiple subscriptions receive separate emails per subscription.
 
     Args:
         matched_df: DataFrame with matched applications from user_application_matching
 
     Returns:
-        Dictionary mapping (email, radius_miles, min_interest_score) tuples to application lists
+        Dictionary mapping subscription key tuples to application lists
     """
-    subscription_cols = ["email", "radius_miles", "min_interest_score"]
+    subscription_cols = [
+        "email", "postcode", "radius_miles", "min_interest_score",
+        "min_score_disturbance", "min_score_scale",
+        "min_score_housing", "min_score_environment",
+    ]
     grouped = matched_df.groupby(subscription_cols)
     subscriptions = {}
 
-    for (email, radius, min_interest_score), group in grouped:
-        applications = group[
-            ["application_id", "description",
-                "public_interest_score", "postcode_right", "application_page_url"]
-        ].to_dict("records")
-        subscription_key = (email, radius, min_interest_score)
-        subscriptions[subscription_key] = applications
+    application_cols = [
+        "application_id", "description",
+        "public_interest_score",
+        "score_disturbance", "score_scale",
+        "score_housing", "score_environment",
+        "postcode_right", "application_page_url",
+    ]
+    available_cols = [c for c in application_cols if c in matched_df.columns]
+
+    for key, group in grouped:
+        applications = group[available_cols].to_dict("records")
+        subscriptions[key] = applications
 
     return subscriptions
 
@@ -209,11 +289,22 @@ def create_subscription_matches(subscriptions: dict[tuple, list[dict]]) -> list[
     Returns:
         List of SubscriptionMatch objects
     """
-    matches = [
-        SubscriptionMatch(email=email, radius_miles=radius,
-                          min_interest_score=min_int, applications=apps)
-        for (email, radius, min_int), apps in subscriptions.items()
-    ]
+    matches = []
+    for key, apps in subscriptions.items():
+        email, postcode, radius, min_int, min_dist, min_scale, min_housing, min_env = key
+        matches.append(
+            SubscriptionMatch(
+                email=email,
+                postcode=postcode,
+                radius_miles=radius,
+                min_interest_score=min_int,
+                min_score_disturbance=min_dist,
+                min_score_scale=min_scale,
+                min_score_housing=min_housing,
+                min_score_environment=min_env,
+                applications=apps,
+            )
+        )
     return matches
 
 
@@ -247,7 +338,7 @@ def send_notification_emails(subscription_matches: list[SubscriptionMatch]) -> d
             continue
 
         html_body = create_email_html(
-            subscription_match.applications)
+            subscription_match.applications, subscription_match)
         send_success = send_email_via_ses(
             subscription_match.email,
             email_subject,
@@ -333,48 +424,63 @@ def generate_and_send_emails(
     return stats
 
 
-if __name__ == "__main__":
-    # Example usage with environment variables for RDS credentials
-    applications = [
+def preview_example_email() -> None:
+    """Generates an example subscriber email and writes it to an HTML file for browser preview."""
+    example_applications = [
         {
             "application_id": "PA/26/00515/NC",
-            "lat": 51.5200,
-            "long": -0.0520,
-            "public_interest_score": 7,
-            "description": "Residential development",
-            "postcode": "SW1A 1AA",
-            "application_page_url": "https://development.towerhamlets.gov.uk/online-applications/applicationDetails.do?keyVal=DCAPR_150302&activeTab=summary"
+            "public_interest_score": 4,
+            "description": "Construction of a three-storey residential block comprising 12 flats with associated parking and landscaping.",
+            "postcode_right": "SW1A 1AA",
+            "score_disturbance": 4,
+            "score_scale": 3,
+            "score_housing": 5,
+            "score_environment": 2,
+            "application_page_url": "https://development.towerhamlets.gov.uk/online-applications/applicationDetails.do?keyVal=DCAPR_150302&activeTab=summary",
         },
         {
             "application_id": "PA/25/00234/S",
-            "lat": 51.5320,
-            "long": -0.0570,
-            "public_interest_score": 5,
-            "description": "Office conversion",
-            "postcode": "NW1 4AB",
-            "application_page_url": "https://development.towerhamlets.gov.uk/online-applications/applicationDetails.do?keyVal=DCAPR_150306&activeTab=summary"
+            "public_interest_score": 3,
+            "description": "Change of use from office (Class E) to 6 residential units (Class C3) with rear extension.",
+            "postcode_right": "NW1 4AB",
+            "score_disturbance": 2,
+            "score_scale": 2,
+            "score_housing": 4,
+            "score_environment": 3,
+            "application_page_url": "https://development.towerhamlets.gov.uk/online-applications/applicationDetails.do?keyVal=DCAPR_150306&activeTab=summary",
         },
         {
             "application_id": "PA/25/00143/NC",
-            "lat": 51.5200,
-            "long": -0.1020,
-            "public_interest_score": 4,
-            "description": "Retail space",
-            "postcode": "EC1A 1BB",
-            "application_page_url": "https://development.towerhamlets.gov.uk/online-applications/applicationDetails.do?keyVal=DCAPR_150307&activeTab=summary"
-        },
-        {
-            "application_id": "PA/25/00063/S",
-            "lat": 51.6000,
-            "long": 0.0000,
-            "public_interest_score": 8,
-            "description": "Large commercial project",
-            "postcode": "E1 6AN",
-            "application_page_url": "https://development.towerhamlets.gov.uk/online-applications/applicationDetails.do?keyVal=DCAPR_150302&activeTab=summary"
+            "public_interest_score": 5,
+            "description": "Demolition of existing warehouse and erection of a mixed-use development including 40 residential units and ground-floor retail.",
+            "postcode_right": "EC1A 1BB",
+            "score_disturbance": 5,
+            "score_scale": 5,
+            "score_housing": 4,
+            "score_environment": 3,
+            "application_page_url": "https://development.towerhamlets.gov.uk/online-applications/applicationDetails.do?keyVal=DCAPR_150307&activeTab=summary",
         },
     ]
 
+    example_subscription = SubscriptionMatch(
+        email="subscriber@example.com",
+        postcode="E1 6AN",
+        radius_miles=1.5,
+        min_interest_score=3,
+        min_score_disturbance=2,
+        min_score_scale=1,
+        min_score_housing=3,
+        min_score_environment=1,
+        applications=example_applications,
+    )
+
+    html_content = create_email_html(
+        example_applications, example_subscription)
+    output_path = Path(__file__).parent / "email_preview.html"
+    output_path.write_text(html_content, encoding="utf-8")
+    print(f"Email preview written to: {output_path}")
+    print(f"Open in browser: file://{output_path}")
+
 
 if __name__ == "__main__":
-    print(generate_and_send_emails(
-        'c22-planning-pipeline-db.c57vkec7dkkx.eu-west-2.rds.amazonaws.com', 5432, 'planning_admin', 'password', 'planning_db', applications))
+    preview_example_email()
