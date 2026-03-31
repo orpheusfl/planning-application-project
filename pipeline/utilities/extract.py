@@ -10,7 +10,6 @@ Supports two scrape sources:
 """
 
 import logging
-from datetime import date, timedelta
 from typing import Any, Dict, List, Optional
 from urllib.parse import urljoin, urlparse, parse_qs, urlencode, urlunparse
 
@@ -245,6 +244,7 @@ def prime_weekly_decided_state(session: requests.Session) -> bool:
     # Single fetch — extract both the CSRF token and the week options together.
     search_html = fetch_page(session, WEEKLY_LIST_SEARCH_URL)
     if not search_html:
+        logger.error("Failed to retrieve the web page HTML")
         return False
 
     csrf_token = extract_csrf_token(search_html)
@@ -656,23 +656,23 @@ def get_existing_applications(conn: Any) -> Dict[str, str]:
 
 
 def filter_new_applications(
-    stubs: List[Dict[str, str]],
+    initial_application_info: List[Dict[str, str]],
     existing_applications: Dict[str, str],
 ) -> List[Dict[str, str]]:
     """
-    Filters application stubs to return only new applications (not in the database).
+    Filters application info to return only new applications (not in the database).
 
-    Returns a list of stubs annotated with ``database_action: "insert"``.
+    Returns a list of initial application info annotated with ``database_action: "insert"``.
     This is called *before* enrichment to avoid unnecessary work on existing applications.
     """
     new_apps = []
 
-    for stub in stubs:
-        app_id = stub["application_id"]
+    for app_info in initial_application_info:
+        app_id = app_info["application_id"]
 
         if app_id not in existing_applications:
             logger.debug("New application: %s", app_id)
-            new_apps.append({**stub, "database_action": "insert"})
+            new_apps.append({**app_info, "database_action": "insert"})
         else:
             logger.debug("Skipping existing application: %s", app_id)
 
@@ -731,17 +731,18 @@ def _run_scraper_pipeline(
 
     logger.info("Starting scrape: for %s", label)
 
-    stubs = scraper_to_run(session)
+    initial_application_info = scraper_to_run(session)
 
     # Filter new applications before enrichment to avoid unnecessary work
-    new_stubs = filter_new_applications(stubs, existing)
+    new_info = filter_new_applications(initial_application_info, existing)
 
     # Enrich only the new applications
-    enriched_new = enrich_applications(session, new_stubs)
+    enriched_new = enrich_applications(session, new_info)
 
     # Filter changed applications: need to enrich existing apps to compare status
-    existing_stubs = [s for s in stubs if s["application_id"] in existing]
-    enriched_existing = enrich_applications(session, existing_stubs)
+    existing_info = [
+        s for s in initial_application_info if s["application_id"] in existing]
+    enriched_existing = enrich_applications(session, existing_info)
     changed_apps = filter_changed_applications(enriched_existing, existing)
 
     # Combine new and changed applications
