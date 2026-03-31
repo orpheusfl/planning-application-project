@@ -17,7 +17,8 @@ from unittest.mock import Mock, patch, MagicMock
 import pytest
 import requests
 
-from ..utilities.transform import Application, SUB_SCORE_RUBRICS
+from ..utilities.transform import Application
+from ..utilities.config import SUB_SCORE_RUBRICS
 
 
 class TestFormatAddress:
