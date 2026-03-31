@@ -65,17 +65,22 @@ logger = logging.getLogger(__name__)
 
 def create_scraper_session() -> requests.Session:
     """Initialises a persistent session with standard browser headers and disabled SSL."""
-    session = requests.Session()
-    session.verify = False
-    session.headers.update({
-        "User-Agent": (
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:148.0) "
-            "Gecko/20100101 Firefox/148.0"
-        ),
-        "Accept":     "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Connection": "keep-alive",
-    })
-    return session
+    try:
+        session = requests.Session()
+        session.verify = False
+
+        session.headers.update({
+            "User-Agent": (
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:148.0) "
+                "Gecko/20100101 Firefox/148.0"
+            ),
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Connection": "keep-alive",
+        })
+        return session
+    except Exception as e:
+        logger.error("Error creating session: %s", e)
+        raise
 
 
 def acquire_session_cookie(session: requests.Session) -> bool:
