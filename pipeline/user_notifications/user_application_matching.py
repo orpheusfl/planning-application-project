@@ -81,6 +81,6 @@ def match_applications_to_users(users_gdf: gpd.GeoDataFrame, applications_gdf: g
 
     # Filter by minimum interest score
     matched_df = matched_df[matched_df["public_interest_score"]
-                            >= matched_df["min_interest_score"]]
+                            >= matched_df["min_interest"]]
 
     return matched_df

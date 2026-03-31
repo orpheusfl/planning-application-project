@@ -55,7 +55,7 @@ class SubscriptionMatch:
 
     email: str
     radius_miles: float
-    min_interest: int
+    min_interest_score: int
     applications: list[dict]
 
     def has_matches(self) -> bool:
@@ -189,12 +189,12 @@ def group_applications_by_subscription(matched_df: pd.DataFrame) -> dict[tuple, 
     grouped = matched_df.groupby(subscription_cols)
     subscriptions = {}
 
-    for (email, radius, min_interest), group in grouped:
+    for (email, radius, min_interest_score), group in grouped:
         applications = group[
             ["application_id", "description",
                 "public_interest_score", "postcode_right", "application_page_url"]
         ].to_dict("records")
-        subscription_key = (email, radius, min_interest)
+        subscription_key = (email, radius, min_interest_score)
         subscriptions[subscription_key] = applications
 
     return subscriptions
@@ -211,7 +211,7 @@ def create_subscription_matches(subscriptions: dict[tuple, list[dict]]) -> list[
     """
     matches = [
         SubscriptionMatch(email=email, radius_miles=radius,
-                          min_interest=min_int, applications=apps)
+                          min_interest_score=min_int, applications=apps)
         for (email, radius, min_int), apps in subscriptions.items()
     ]
     return matches
@@ -242,7 +242,7 @@ def send_notification_emails(subscription_matches: list[SubscriptionMatch]) -> d
                 "No matches for subscription %s (radius: %.1f mi, min_score: %d), skipping email",
                 subscription_match.email,
                 subscription_match.radius_miles,
-                subscription_match.min_interest,
+                subscription_match.min_interest_score,
             )
             continue
 
