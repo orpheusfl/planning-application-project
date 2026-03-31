@@ -306,7 +306,9 @@ class TestToDict:
         required_fields = [
             'application_number', 'application_type', 'address', 'postcode',
             'lat', 'long', 'validation_date', 'status_type', 'ai_summary',
-            'public_interest_score', 'application_page_url', 'document_page_url'
+            'public_interest_score', 'score_disturbance', 'score_scale',
+            'score_housing', 'score_environment',
+            'application_page_url', 'document_page_url'
         ]
         for field in required_fields:
             assert field in result

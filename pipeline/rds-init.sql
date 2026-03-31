@@ -49,6 +49,10 @@ CREATE TABLE IF NOT EXISTS application (
     long NUMERIC(10, 7),
     ai_summary TEXT,
     public_interest_score BIGINT,
+    score_disturbance INTEGER,
+    score_scale INTEGER,
+    score_housing INTEGER,
+    score_environment INTEGER,
     application_page_url TEXT,
     document_page_url TEXT,
     
