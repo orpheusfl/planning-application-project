@@ -908,6 +908,11 @@ Return format:
         Returns:
             Dict with all application fields ready for RDS loading
         """
+        decided_at = None
+        if self.decision_date:
+            decided_at = self.parse_validation_date_to_datetime(
+                self.decision_date)
+
         return {
             'application_number': self.application_number,
             'application_type': self.application_type,
@@ -925,8 +930,8 @@ Return format:
             'score_housing': self.score_housing,
             'application_page_url': self.application_page_url,
             'document_page_url': self.document_page_url,
-            'decision_date': self.decision_date,
-            'decision': self.decision,
+            'decision_type': self.decision,
+            'decided_at': decided_at,
             'database_action': self.database_action
         }
 
