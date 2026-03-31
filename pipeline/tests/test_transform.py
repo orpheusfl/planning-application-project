@@ -20,14 +20,18 @@ from ..utilities.transform import Application
 
 
 class TestFormatAddress:
-    """Tests for extracting postcode and address components."""
+    """Tests for extract_postcode_from_address and format_address_by_removing_postcode."""
 
-    def test_happy_path_valid_address(self, sample_application, sample_raw_address):
+    def test_happy_path_valid_address(self, sample_raw_address):
         """Extract postcode and address from valid UK address."""
-        result = sample_application.format_address(sample_raw_address)
 
-        assert result['address'] == "Iceland Wharf, Iceland Road, London"
-        assert result['postcode'] == "E3 2JP"
+        postcode = Application.extract_postcode_from_address(
+            sample_raw_address)
+        address = Application.format_address_by_removing_postcode(
+            sample_raw_address, postcode)
+
+        assert address == "Iceland Wharf, Iceland Road, London"
+        assert postcode == "E3 2JP"
 
     @pytest.mark.parametrize("address,expected_postcode", [
         ("123 High Street, London SW1A 1AA", "SW1A 1AA"),
@@ -35,25 +39,26 @@ class TestFormatAddress:
         ("Cambridge CB2 1TN", "CB2 1TN"),
         ("Edinburgh EH8 8DX", "EH8 8DX"),
     ])
-    def test_various_valid_postcodes(self, sample_application, address, expected_postcode):
+    def test_various_valid_postcodes(self, address, expected_postcode):
         """Extract postcodes from addresses with different formats."""
-        result = sample_application.format_address(address)
-        assert result['postcode'] == expected_postcode
+        result = Application.extract_postcode_from_address(address)
+        assert result == expected_postcode
 
-    def test_address_missing_postcode(self, sample_application):
-        """Raise ValueError when address lacks UK postcode."""
-        with pytest.raises(ValueError, match="Could not extract postcode"):
-            sample_application.format_address("123 High Street, London")
+    def test_address_missing_postcode(self):
+        """Return empty string when address lacks a UK postcode."""
+        result = Application.extract_postcode_from_address(
+            "123 High Street, London")
+        assert result == ""
 
-    def test_empty_address_string(self, sample_application):
-        """Raise ValueError for empty address string."""
-        with pytest.raises(ValueError, match="Could not extract postcode"):
-            sample_application.format_address("")
+    def test_empty_address_string(self):
+        """Return empty string for empty address input."""
+        result = Application.extract_postcode_from_address("")
+        assert result == ""
 
-    def test_postcode_only(self, sample_application):
+    def test_postcode_only(self):
         """Extract postcode even when only postcode provided."""
-        result = sample_application.format_address("E3 2JP")
-        assert result['postcode'] == "E3 2JP"
+        result = Application.extract_postcode_from_address("E3 2JP")
+        assert result == "E3 2JP"
 
 
 class TestParseValidationDateToDatetime:

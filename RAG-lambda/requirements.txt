@@ -1,0 +1,6 @@
+requests
+beautifulsoup4
+pymupdf
+python-dotenv
+psycopg2-binary
+urllib3
