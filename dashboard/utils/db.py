@@ -58,12 +58,17 @@ def _get_credentials() -> dict:
         }
 
 
-@st.cache_resource
 def get_connection():
-    """Return a long-lived connection to the Postgres database."""
+    """Return a new connection to the Postgres database."""
     creds = _get_credentials()
     ssl_cert = os.getenv("DB_SSL_CERT", "./global-bundle.pem")
-    logging.info(f"Given credentials: {creds}")
+    logging.info(
+        "Using DB credentials for user='%s', dbname='%s', host='%s', port='%s'.",
+        creds.get("user"),
+        creds.get("dbname"),
+        creds.get("host"),
+        creds.get("port"),
+    )
 
     # Validate credentials before attempting connection
     required_fields = ["host", "port", "dbname", "user", "password"]
