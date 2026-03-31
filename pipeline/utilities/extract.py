@@ -518,7 +518,7 @@ def _reprime_weekly_list(session: requests.Session) -> bool:
     return prime_weekly_decided_state(session)
 
 
-def get_current_applications(session: requests.Session, limit: Optional[int] = 1) -> List[Dict[str, str]]:
+def get_current_applications(session: requests.Session, limit: Optional[int] = 100) -> List[Dict[str, str]]:
     """Paginates through the current-applications search result pages, returning application stubs."""
     if not acquire_session_cookie(session, url=BASE_URL):
         logger.error("Failed to acquire session cookie. Exiting.")
@@ -531,7 +531,7 @@ def get_current_applications(session: requests.Session, limit: Optional[int] = 1
     return paginate_applications_helper(session, _reprime_current_list, limit)
 
 
-def get_weekly_decided_applications(session: requests.Session, limit: Optional[int] = 1) -> List[Dict[str, str]]:
+def get_weekly_decided_applications(session: requests.Session, limit: Optional[int] = 100) -> List[Dict[str, str]]:
     """Paginates through the weekly decided-list, returning application stubs."""
     if not acquire_session_cookie(session, WEEKLY_LIST_SEARCH_URL):
         logger.error("Failed to acquire session cookie. Exiting.")

@@ -17,7 +17,7 @@ from utilities.load import get_rds_connection, load_application_data, update_app
 logger = logging.getLogger(__name__)
 
 COUNCIL_NAME = "Tower Hamlets"
-MAX_APPLICATIONS_PER_RUN = 10
+MAX_APPLICATIONS_PER_RUN = 100
 
 
 def build_db_connection(db_host: str, db_port: str, db_name: str,
