@@ -16,7 +16,11 @@ import requests
 from bs4 import BeautifulSoup
 from dateutil import parser as date_parser
 from dotenv import load_dotenv
-from selenium import webdriver
+
+from selenium.webdriver import Chrome
+from selenium.webdriver.chrome.options import Options
+
+from utilities.extract import extract_csrf_token
 
 
 logger = logging.getLogger(__name__)
@@ -27,21 +31,7 @@ load_dotenv()  # Load environment variables from .env file
 POSTCODE_REGEX = r"\b[A-Z]{1,2}\d[A-Z\d]?\s?\d[A-Z]{2}\b"
 
 
-def extract_csrf_token(html_content: str) -> str | None:
-    """Extract CSRF security token from HTML.
-
-    Args:
-        html_content: HTML content to search for token
-
-    Returns:
-        CSRF token value or None if not found
-    """
-    soup = BeautifulSoup(html_content, "html.parser")
-    csrf_input = soup.find("input", {"name": "_csrf"})
-
-    if csrf_input and isinstance(csrf_input.get("value"), str):
-        return csrf_input.get("value")
-    return None
+INCOMPLETE_POSTCODE_REGEX = r"\b[A-Z]{1,2}\d{1,2}[A-Z]?\b"
 
 
 class Application:
@@ -82,11 +72,16 @@ class Application:
         self.application_page_url = urls.get('application_page_url')
         self.document_page_url = urls.get('document_page_url')
         self.public_interest_score: int | None = None
+        self.score_scale: int | None = None
+        self.score_disturbance: int | None = None
+        self.score_environment: int | None = None
+        self.score_housing: int | None = None
 
         # Process and store address (no network calls)
-        address_data = self.format_address(address)
-        self.address = address_data['address']
-        self.postcode = address_data['postcode']
+
+        self.postcode = Application.extract_postcode_from_address(address)
+        self.address = Application.format_address_by_removing_postcode(
+            address, self.postcode)
 
         # Store raw inputs for processing
         self._raw_description = description
@@ -116,40 +111,51 @@ class Application:
                 "Error parsing validation date '%s': %s", validation_date, e, exc_info=True)
             raise
 
-    def format_address(self, address: str) -> dict:
-        """Extract unique elements from the address string.
+    @staticmethod
+    def extract_postcode_from_address(address: str) -> str:
+        """Extract postcode from address string using regex. If only a partial postcode is found, return it for LLM validation later.
 
         Args:
             address: Full address string (e.g., "36A Grove Road, London, E3 5AX")
 
         Returns:
-            Dict with 'street' (str), 'city' (str), 'postalcode' (str), and 'country' (str) keys
-            Example: {'street': '36A Grove Road', 'city': 'London',
-                'postalcode': 'E35AX', 'country': 'UK'}
+            Extracted postcode string (e.g., "E3 5AX") or empty string if not found
+        """
+        # Attempt to find a complete postcode first
+        match = re.search(POSTCODE_REGEX, address)
+        if match:
+            return match.group(0)
+
+        # If no complete postcode, look for an incomplete one (e.g., "E14", "W1A")
+        match = re.search(INCOMPLETE_POSTCODE_REGEX, address)
+        if match:
+            incomplete_postcode = match.group(0)
+            logger.info("Extracted incomplete postcode: %s",
+                        incomplete_postcode)
+            return incomplete_postcode
+
+        logger.warning("No postcode found in address: %s", address)
+        return ""
+
+    @staticmethod
+    def format_address_by_removing_postcode(address: str, postcode: str) -> str:
+        """ Remove postcode from address string to create a 'clean' address field for database storage.
+
+        Args:
+            address: Full address string (e.g., "36A Grove Road, London, E3 5AX")
+            postcode: Postcode string to remove from the address (e.g., "E3 5AX")
+
+        Returns:
+            Address string with postcode removed (e.g., "36A Grove Road, London")
         """
 
         address = address.strip()
 
-        # Try to extract a complete postcode first
-        postcode_match = re.search(POSTCODE_REGEX, address)
-        if postcode_match:
-            postcode = postcode_match.group(0)
-        else:
-            # Fall back to incomplete postcode pattern (e.g., "E14", "W1A")
-            # This allows LLM to validate and complete incomplete postcodes later
-            incomplete_postcode_regex = r"\b[A-Z]{1,2}\d{1,2}[A-Z]?\b"
-            postcode_match = re.search(incomplete_postcode_regex, address)
-            if not postcode_match:
-                logger.warning("No postcode found in address: %s", address)
-                raise ValueError(
-                    f"Could not extract postcode from address: {address}")
-            postcode = postcode_match.group(0)
-            logger.info("Extracted incomplete postcode: %s", postcode)
+        # Remove any postcode from the address for the 'address' field in the database
+        formatted_address = re.sub(
+            re.escape(postcode), '', address).strip(', ')
 
-        address_without_postcode = address.replace(
-            postcode, "").strip(", ").strip()
-
-        return {'address': address_without_postcode, 'postcode': postcode}
+        return formatted_address
 
     def geocode_postcode(self, postcode: str) -> tuple[float, float] | None:
         """Convert a UK postcode to (lat, lon) via postcodes.io.
@@ -232,7 +238,7 @@ class Application:
         postcode_instructions = self._get_postcode_instructions(
             postcode=incomplete_postcode)
 
-        prompt = f"""Analyze this planning application and return a JSON response with three fields:
+        prompt = f"""Analyze this planning application and return a JSON response with six fields:
                     1. "summary": A 2-3 sentence summary highlighting key details residents need to
                     know (housing units, effects on neighboring property value, public amenities, traffic impact, transport links, affordable
                     housing percentage, environmental concerns). CRITICAL: Include inline references
@@ -240,37 +246,59 @@ class Application:
                     Use the format: "...specific detail (<document_type>, page X)..." embedded
                     throughout the summary. For example: "The scheme includes 500 units of housing
                     (source: Application Form, page 2) with 25% affordable housing (source: Design Report, page 5)..."
-                    2. "public_interest_score": An integer from 1-10 assessing public interest level. 
-                    The public interest score should be the average of 5 sub-scores (each 1-10) 
-                    for: a) scale of development
-                        b) positive impact on local area, such as improving local amenities like a leisure centre or park or transport links
-                        c) level of controversy in the documents, especially if there is concern for cultural/historical sites, or significant opposition from local residents.
-                        d) environmental impact, especially if there are concerns about green space, pollution, or sustainability
-                        e) affordable housing provision, with higher scores for more affordable housing
-                    3. "postcode": The complete and correct UK postcode for this application.
+
+                    2. "score_disturbance": Level of disturbance (1–5). Consider sound, spatial disruption, and air quality.
+                       1 = No noticeable change. Example: internal refurbishment, like-for-like window replacement.
+                       2 = Minor, short-lived disruption. Example: scaffolding for a few weeks, occasional drilling during work hours.
+                       3 = Moderate disruption for several months. Example: temporary road narrowing, regular construction noise Mon–Fri, some dust.
+                       4 = Significant disruption over 6+ months. Example: road closures, heavy machinery daily, noticeable dust and vibration, parking displaced.
+                       5 = Severe, prolonged disruption for 1+ years. Example: major road diversions, pile-driving, demolition dust requiring air quality monitoring, loss of pavement access.
+
+                    3. "score_scale": Scale of development (1–5). Consider the physical size and duration of works.
+                       1 = Tiny, completed in days. Example: new shop sign, single tree removal, fence replacement.
+                       2 = Small, completed in weeks. Example: loft conversion, single-storey rear extension, dropped kerb.
+                       3 = Medium, several months. Example: two-storey side extension, conversion of house to flats, new roof.
+                       4 = Large, 6–12 months. Example: new-build block of 10–50 flats, demolition and rebuild of a commercial unit.
+                       5 = Major, 1+ years. Example: multi-phase estate regeneration, 100+ residential units, tower block construction.
+
+                    4. "score_housing": Effect on local housing prices (1–5). Consider the rough potential impact based on similar developments.
+                       1 = No measurable effect. Example: internal works, change of use from one shop to another.
+                       2 = Negligible effect. Example: single new dwelling or conversion of house into 2 flats.
+                       3 = Small but noticeable effect. Example: new block of 10–20 units, may slightly increase supply and competition.
+                       4 = Moderate effect. Example: 50–100 new homes, affordable housing included, likely to shift local rental and sale prices by a few percent.
+                       5 = Significant market impact. Example: 200+ units or estate regeneration that redefines the area, likely to attract new demographics and visibly move prices.
+
+                    5. "score_environment": Environmental and community impact (1–5). Consider wildlife, community spaces, and the effect of new residents on the local area.
+                       1 = No environmental or community change. Example: internal works, signage.
+                       2 = Minimal impact. Example: removal of a single tree (replaced), minor change to a private garden.
+                       3 = Moderate impact. Example: loss of a small green area, new residents bringing footfall to local shops but also more waste and noise.
+                       4 = Notable impact. Example: building on informal green space, loss of biodiversity corridor, development near a watercourse, 50+ new residents changing the character of a quiet street.
+                       5 = Major impact. Example: building on floodplain, large-scale tree removal, loss of allotments or playing fields, 200+ new residents fundamentally changing the neighbourhood feel.
+
+                    6. "postcode": The complete and correct UK postcode for this application.
                     {postcode_instructions}
                 
                         
-                    Respond ONLY with valid JSON, no additional text.
+                                Respond ONLY with valid JSON, no additional text.
 
-Original Application Description:
-{original_description}
+            Original Application Description:
+            {original_description}
 
-Full Address:
-{full_address}
+            Full Address:
+            {full_address}
 
-Extracted PDF Content:
-{formatted_pdf_text}
+            Extracted PDF Content:
+            {formatted_pdf_text}
 
-Focus the summary on: proposed uses, number of units/buildings, key impacts on the
-neighborhood, affordable housing provisions, and any notable amenities or concerns.
-If there is no pdf content, summarise based on the original description.
+            Focus the summary on: proposed uses, number of units/buildings, key impacts on the
+            neighborhood, affordable housing provisions, and any notable amenities or concerns.
+            If there is no pdf content, summarise based on the original description.
 
-Use UK English and be concise, but using full sentences. Avoid generic statements
-and focus on specific details that would be relevant to local residents.
+            Use UK English and be concise, but using full sentences. Avoid generic statements
+            and focus on specific details that would be relevant to local residents.
 
 Return format:
-{{"summary": "...", "public_interest_score": <number>, "postcode": "..."}}"""
+{{"summary": "...", "score_disturbance": <1-5>, "score_scale": <1-5>, "score_housing": <1-5>, "score_environment": <1-5>, "postcode": "..."}}"""
         return prompt
 
     def _get_postcode_instructions(self, postcode: str) -> str:
@@ -291,7 +319,9 @@ Return format:
 
         return (
             f"The postcode '{postcode}' appears incomplete or invalid. Use the "
-            f"PDF content and full address to find the complete, correct postcode."
+            f"PDF content and full address to find the complete, correct postcode. "
+            f"If there is no postcode, try to find it based on the address and location details in the documents. "
+            f"If you cannot find a valid postcode, find a postcode that is nearest to the location of the development based on the address and details in the documents."
         )
 
     def _is_valid_postcode(self, postcode: str) -> bool:
@@ -370,10 +400,22 @@ Return format:
             raise ValueError(f"Invalid JSON from LLM: {str(e)}") from e
 
         try:
+            sub_scores = [
+                result['score_scale'],
+                result['score_disturbance'],
+                result['score_environment'],
+                result['score_housing'],
+            ]
+            public_interest_score = round(sum(sub_scores) / len(sub_scores))
+
             return {
                 'ai_summary': result['summary'],
-                'public_interest_score': result['public_interest_score'],
-                'postcode': result.get('postcode', '')
+                'public_interest_score': public_interest_score,
+                'score_scale': result['score_scale'],
+                'score_disturbance': result['score_disturbance'],
+                'score_environment': result['score_environment'],
+                'score_housing': result['score_housing'],
+                'postcode': result.get('postcode', ''),
             }
         except KeyError as e:
             logger.error("Missing required field in LLM response: %s", e)
@@ -390,8 +432,15 @@ Return format:
         Returns:
             Tuple of (cookies list, csrf_token string or None)
         """
-        from selenium.webdriver import Chrome
-        driver = Chrome()
+
+        options = Options()
+        options.add_argument("--headless")
+        options.add_argument("--no-sandbox")
+        options.add_argument("--disable-dev-shm-usage")
+        options.add_argument("--disable-gpu")
+
+        driver = Chrome(options=options)
+
         try:
             driver.get(url)
             time.sleep(10)  # Wait longer for authentication to complete
@@ -613,6 +662,10 @@ Return format:
         return {
             'ai_summary': analysis['ai_summary'],
             'public_interest_score': analysis['public_interest_score'],
+            'score_scale': analysis['score_scale'],
+            'score_disturbance': analysis['score_disturbance'],
+            'score_environment': analysis['score_environment'],
+            'score_housing': analysis['score_housing'],
             'postcode': analysis['postcode']
         }
 
@@ -648,6 +701,10 @@ Return format:
                 self._raw_pdfs, session, api_key)
             self.ai_summary = pdf_analysis['ai_summary']
             self.public_interest_score = pdf_analysis['public_interest_score']
+            self.score_scale = pdf_analysis['score_scale']
+            self.score_disturbance = pdf_analysis['score_disturbance']
+            self.score_environment = pdf_analysis['score_environment']
+            self.score_housing = pdf_analysis['score_housing']
 
             # Update postcode with LLM-validated version if provided
             postcode = pdf_analysis.get('postcode')
@@ -739,6 +796,10 @@ Return format:
             'status_type': self.status,
             'ai_summary': self.ai_summary,
             'public_interest_score': self.public_interest_score,
+            'score_scale': self.score_scale,
+            'score_disturbance': self.score_disturbance,
+            'score_environment': self.score_environment,
+            'score_housing': self.score_housing,
             'application_page_url': self.application_page_url,
             'document_page_url': self.document_page_url
         }

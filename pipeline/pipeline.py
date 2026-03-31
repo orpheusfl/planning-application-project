@@ -70,7 +70,7 @@ def main():
             application_info=app.to_dict()
         )
 
-        if len(processed_applications) > 20:
+        if len(processed_applications) > 10:
             break
 
     generate_and_send_emails(processed_applications)

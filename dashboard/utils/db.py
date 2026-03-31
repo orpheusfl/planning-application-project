@@ -32,6 +32,8 @@ def _get_credentials() -> dict:
     Locally, if AWS credentials aren't configured or the secret can't be
     reached, we fall back to the DB_* environment variables from .env.
     """
+    logging.info("Attempting to load credentials from Secrets Manager...")
+    logging.info(f"SECRET_NAME: {SECRET_NAME}, AWS_REGION: {AWS_REGION}")
     try:
         client = boto3.client("secretsmanager", region_name=AWS_REGION)
         response = client.get_secret_value(SecretId=SECRET_NAME)
@@ -56,12 +58,17 @@ def _get_credentials() -> dict:
         }
 
 
-@st.cache_resource
 def get_connection():
-    """Return a long-lived connection to the Postgres database."""
+    """Return a new connection to the Postgres database."""
     creds = _get_credentials()
     ssl_cert = os.getenv("DB_SSL_CERT", "./global-bundle.pem")
-    logging.info(f"Given credentials: {creds}")
+    logging.info(
+        "Using DB credentials for user='%s', dbname='%s', host='%s', port='%s'.",
+        creds.get("user"),
+        creds.get("dbname"),
+        creds.get("host"),
+        creds.get("port"),
+    )
 
     # Validate credentials before attempting connection
     required_fields = ["host", "port", "dbname", "user", "password"]
