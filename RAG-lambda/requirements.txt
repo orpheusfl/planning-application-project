@@ -1,10 +1,6 @@
-
 requests
 beautifulsoup4
-selenium
 pymupdf
 python-dotenv
-openai
-boto3
 psycopg2-binary
 urllib3
