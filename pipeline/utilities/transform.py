@@ -40,15 +40,19 @@ class Application:
     """Represents a processed planning application with validated and enriched data."""
 
     def __init__(
-            self,
-            application_number: str,
-            application_type: str,
-            description: str,
-            address: str,
-            validation_date: str,
-            status: str,
-            pdfs: list[dict],
-            urls: dict | None = None) -> None:
+        self,
+        application_number: str,
+        application_type: str,
+        description: str,
+        address: str,
+        validation_date: str,
+        status: str,
+        pdfs: list[dict],
+        decision: str,
+        decision_date: str,
+        database_action: str,
+        urls: dict | None = None
+    ) -> None:
         """Initialize with raw input data. Call process() to transform and enrich.
 
         Args:
@@ -60,6 +64,9 @@ class Application:
             status: Current status of the application
             pdfs: List of dicts with 'pdf_url' and 'document_type' keys
             urls: Optional dict with 'application_page_url' and 'document_page_url'
+            decision: Decision string (e.g., "Approved", "Refused")
+            decision_date: Decision date string (e.g., "Fri 20 Mar 2026")
+            database_action: Database action string (e.g., "Insert", "Update")
         """
         if urls is None:
             urls = {}
@@ -78,6 +85,9 @@ class Application:
         self.score_disturbance: int | None = None
         self.score_environment: int | None = None
         self.score_housing: int | None = None
+        self.decision = decision
+        self.decision_date = decision_date
+        self.database_action = database_action
 
         # Process and store address (no network calls)
 
