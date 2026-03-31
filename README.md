@@ -13,20 +13,19 @@ Planning Watchdog automates the discovery and analysis of planning applications 
 3. **Loads** enriched data into a PostgreSQL RDS database
 4. **Dashboard** displays applications on an interactive map with advanced filtering and search
 5. **Alerts** Emails sent out to users about new applications matching their interests using SES
+6. **RAG Chatbot** chatbot with access to the pdf documents for an application, to enable users to ask questions about documents
 
 # How to Access the Dashboard   
 
 The dashboard is hosted as an ECS service. You can access it at: [Add Link Here]
 
-## How to Run the ETL Pipeline and Dashboard on AWS
+## How to Deploy and Run the ETL Pipeline and Dashboard on AWS
 
-1. Build the docker image for the dashboard 
-docker build -t c22-planning-dashboard:latest dashboard/
-2. Tag the image for ECR
-docker tag c22-planning-dashboard:latest \
-  $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/c22-planning-dashboard:latest
-3. Push to ECR
-docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/c22-planning-dashboard:latest
+1. cd into the `terraform` folder
+2. run `terraform apply`
+3. each sub-folder contains a bash script for building the container, and pushing to the appropriate ECR
+ - cd into the sub-folder
+ - run  `bash build_and_push_container.sh`
 
 [check if these steps are correct and add similar steps for the pipeline]
 
