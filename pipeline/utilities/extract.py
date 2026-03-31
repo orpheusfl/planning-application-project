@@ -488,11 +488,12 @@ def paginate_applications_helper(
             logger.info("No applications on page %d. Ending pagination.", page)
             break
 
-        # comment out later
-        if page > 8:
+        if len(results) > 10:
+            logger.info(
+                "Overflow page detected on page %d. Ending pagination.", page)
             break
 
-        applications.extend(extracted_apps)
+        applications.extend(results)
         page += 1
 
     if page_limit and page > page_limit:
@@ -761,7 +762,7 @@ def run_scraper_current_applications(conn: Any) -> List[Dict[str, Any]]:
 
 def run_scraper_weekly_applications(conn: Any) -> List[Dict[str, Any]]:
     """Runs the scraper pipeline for weekly decided applications."""
-    logger.info("Starting scrape: weekly applications")
+    logger.info("Starting scrape: weekly decided applications")
     return _run_scraper_pipeline(
         conn,
         scraper_to_run=get_weekly_decided_applications,
