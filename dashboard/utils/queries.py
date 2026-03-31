@@ -10,8 +10,9 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
-from .config import BOUNDARIES_DIR
 from .db import get_connection
+
+BOUNDARIES_DIR = Path(__file__).parent.parent / "boundaries"
 
 # ---------------------------------------------------------------------------
 # Applications
@@ -28,13 +29,13 @@ APPLICATIONS_SQL = """
         a.validation_date   AS date,
         st.status_type      AS status,
         at.application_type  AS application_type,
-        c.council_name      AS council,
+        c.council_name       AS council,
         a.ai_summary        AS summary,
         a.public_interest_score,
-        COALESCE(a.score_scale, 0)        AS score_scale,
-        COALESCE(a.score_disturbance, 0)  AS score_disturbance,
-        COALESCE(a.score_environment, 0)  AS score_environment,
-        COALESCE(a.score_housing, 0)      AS score_housing,
+        a.score_scale,
+        a.score_disturbance,
+        a.score_environment,
+        a.score_housing,
         a.application_page_url,
         a.document_page_url
     FROM application a
@@ -49,38 +50,33 @@ APPLICATIONS_SQL = """
 def load_applications() -> pd.DataFrame:
     """Load all planning applications from the database."""
     conn = get_connection()
-    try:
-        df = pd.read_sql(APPLICATIONS_SQL, conn)
-    finally:
-        conn.close()
+    df = pd.read_sql(APPLICATIONS_SQL, conn)
     df["date"] = pd.to_datetime(df["date"])
     return df
 
 
-def load_council_boundaries(council_names: list[str]) -> dict:
-    """Load GeoJSON boundary data for councils that have a matching file.
+# ---------------------------------------------------------------------------
+# Council boundaries
+# ---------------------------------------------------------------------------
 
-    Looks in the ``boundaries/`` directory for files named
-    ``<council_name>.geojson``.  Only councils present in *council_names*
-    and with a matching file on disk are returned.
+@st.cache_data(ttl=3600)
+def load_council_boundaries(council_names: list[str]) -> dict[str, dict]:
+    """Load GeoJSON boundary files for the given council names.
 
-    Adds a ``tooltip_text`` property to each feature with the council name.
+    Looks for ``boundaries/<council_name>.geojson`` on disk.
+    Councils without a matching file are silently skipped.
 
-    Returns a dict mapping council name → parsed GeoJSON dict.
+    Args:
+        council_names: List of council names to load boundaries for
+
+    Returns:
+        Mapping of council name to parsed GeoJSON dict
     """
-    boundaries: dict = {}
+    boundaries: dict[str, dict] = {}
     for name in council_names:
         path = BOUNDARIES_DIR / f"{name}.geojson"
         if not path.exists():
             continue
         with open(path, encoding="utf-8") as f:
-            geojson = json.load(f)
-
-        # Add tooltip_text to each feature for display on hover
-        for feature in geojson.get("features", []):
-            if "properties" not in feature:
-                feature["properties"] = {}
-            feature["properties"]["tooltip_text"] = name
-
-        boundaries[name] = geojson
+            boundaries[name] = json.load(f)
     return boundaries

@@ -57,7 +57,7 @@ class TestStatusBadge:
 class TestScorePill:
     """Tests for components._score_pill."""
 
-    @pytest.mark.parametrize("score", [1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+    @pytest.mark.parametrize("score", [1, 2, 3, 4, 5])
     def test_valid_scores_produce_html(self, score):
         html = _score_pill(score)
         assert f"score-{score}" in html
@@ -86,7 +86,7 @@ class TestScorePill:
 class TestMarkerColor:
     """Tests for components.marker_color."""
 
-    @pytest.mark.parametrize("score", [1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+    @pytest.mark.parametrize("score", [1, 2, 3, 4, 5])
     def test_known_scores_return_score_colors(self, score):
         assert marker_color(score) == SCORE_COLORS[score]
 

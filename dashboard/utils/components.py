@@ -302,25 +302,22 @@ def render_sidebar(
 
     # Council
     councils = sorted(applications["council"].unique().tolist())
-    map_picked_council = st.session_state.get("map_selected_council")
 
     if len(councils) > 1:
         council_options = ["All"] + councils
-        default_idx = 0
+
+        # A fresh map boundary click overrides the selectbox — consume once
+        map_picked_council = st.session_state.pop("map_selected_council", None)
         if map_picked_council and map_picked_council in council_options:
-            default_idx = council_options.index(map_picked_council)
+            st.session_state["council_selectbox"] = map_picked_council
+
         selected_council = st.sidebar.selectbox(
-            "Council", council_options, index=default_idx,
+            "Council", council_options, key="council_selectbox",
         )
-        # Keep session state in sync with the selectbox
-        if selected_council and selected_council != "All":
-            st.session_state["map_selected_council"] = selected_council
-        else:
-            st.session_state.pop("map_selected_council", None)
         df = filters.by_council(df, selected_council)
     else:
-        # Single council — persist selection across reruns until cleared
-        selected_council = map_picked_council
+        # Single council — use .get() to persist across reruns (no selectbox)
+        selected_council = st.session_state.get("map_selected_council")
 
     # Date range
     min_date = df["date"].min().date()

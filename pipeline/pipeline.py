@@ -10,7 +10,7 @@ import os
 
 from dotenv import load_dotenv
 
-from utilities.extract import run_scraper
+from utilities.extract import run_scraper_current_applications, run_scraper_weekly_applications
 from utilities.transform import Application
 from utilities.load import get_rds_connection, load_application_data
 from user_notifications.generate_emails import generate_and_send_emails
@@ -41,7 +41,8 @@ def main():
         rds_password=db_password,
         rds_db_name=db_name
     )
-    raw_applications = run_scraper(conn)
+    raw_applications = run_scraper_current_applications(
+        conn) + run_scraper_weekly_applications(conn)
 
     processed_applications = []
 
@@ -62,16 +63,24 @@ def main():
         )
 
         app.process(api_key)
-        processed_applications.append(app.to_dict())
 
-        load_application_data(
-            conn,
-            council_name='Tower Hamlets',
-            application_info=app.to_dict()
-        )
+        app_dict = app.to_dict()
+        app_dict["decision"] = raw_app.get("decision")
+        app_dict["decision_date"] = raw_app.get("decision_date")
+        app_dict["database_action"] = raw_app.get("database_action")
+        print(app_dict)
+        break
 
-        if len(processed_applications) > 10:
-            break
+        processed_applications.append(app_dict)
+
+        # load_application_data(
+        #     conn,
+        #     council_name='Tower Hamlets',
+        #     application_info=app.to_dict()
+        # )
+
+        # if len(processed_applications) > 50:
+        #     break
 
     generate_and_send_emails(processed_applications)
 
