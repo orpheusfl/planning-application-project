@@ -83,11 +83,11 @@ def create_scraper_session() -> requests.Session:
         raise
 
 
-def acquire_session_cookie(session: requests.Session) -> bool:
-    """Hits the weekly-list search page to establish the initial JSESSIONID cookie."""
+def acquire_session_cookie(session: requests.Session, url: str) -> bool:
+    """Hits the specified URL to establish the initial JSESSIONID cookie."""
     logger.info("Acquiring fresh JSESSIONID...")
     try:
-        session.get(WEEKLY_LIST_SEARCH_URL, timeout=10)
+        session.get(url, timeout=10)
     except RequestException as e:
         logger.error("Network error acquiring cookie: %s", e)
         return False
@@ -100,10 +100,10 @@ def acquire_session_cookie(session: requests.Session) -> bool:
                 session.cookies["JSESSIONID"][:10])
     return True
 
-
 # ---------------------------------------------------------------------------
 # HTML Parsing Helpers
 # ---------------------------------------------------------------------------
+
 
 def extract_csrf_token(html_content: str) -> Optional[str]:
     """Parses HTML to find the hidden _csrf token required for POST requests."""
@@ -521,7 +521,7 @@ def get_current_applications(session: requests.Session) -> List[Dict[str, str]]:
     Paginates through the current-applications search result pages,
     returning application stubs.
     """
-    if not acquire_session_cookie(session):
+    if not acquire_session_cookie(session, url=BASE_URL):
         logger.error("Failed to acquire session cookie. Exiting.")
         return []
 
@@ -540,7 +540,7 @@ def get_weekly_decided_applications(
     Paginates through the weekly decided-list search result pages,
     returning application stubs in the same format as ``get_current_applications``.
     """
-    if not acquire_session_cookie(session):
+    if not acquire_session_cookie(session, WEEKLY_LIST_SEARCH_URL):
         logger.error("Failed to acquire session cookie. Exiting.")
         return []
 
