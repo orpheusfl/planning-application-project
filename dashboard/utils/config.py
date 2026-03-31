@@ -35,11 +35,10 @@ BOUNDARIES_DIR = Path(__file__).resolve().parent.parent / "boundaries"
 # Sub-score (micro-interest) definitions
 # ---------------------------------------------------------------------------
 SUB_SCORES: list[dict[str, str]] = [
+    {"column": "score_disturbance", "label": "Level of disturbance"},
     {"column": "score_scale", "label": "Scale of development"},
-    {"column": "score_local_impact", "label": "Positive local impact"},
-    {"column": "score_controversy", "label": "Controversy"},
-    {"column": "score_environment", "label": "Environmental impact"},
-    {"column": "score_housing", "label": "Affordable housing"},
+    {"column": "score_housing", "label": "Effect on housing prices"},
+    {"column": "score_environment", "label": "Environmental & community impact"},
 ]
 
 # ---------------------------------------------------------------------------
@@ -50,21 +49,16 @@ RADIUS_CIRCLE_SEGMENTS = 64
 
 # ---------------------------------------------------------------------------
 # Visual mapping — public interest score → colour
-# Gradient from brand blue (#1800ad) through to brand orange (#ff751f)
+# Gradient from light grey (1) to red (5)
 # ---------------------------------------------------------------------------
 SCORE_COLORS: dict[int, list[int]] = {
-    1: [156, 163, 175, 160],
-    2: [134, 140, 152, 170],
-    3: [107, 114, 128, 180],
-    4: [180, 160, 40, 190],
-    5: [245, 158, 11, 200],
-    6: [243, 120, 30, 210],
-    7: [239, 88, 48, 220],
-    8: [239, 68, 68, 230],
-    9: [220, 50, 50, 240],
-    10: [185, 28, 28, 250],
+    1: [196, 196, 196, 160],
+    2: [232, 168, 124, 180],
+    3: [224, 112, 80, 200],
+    4: [217, 68, 50, 220],
+    5: [185, 28, 28, 240],
 }
-DEFAULT_MARKER_COLOR = [156, 163, 175, 180]
+DEFAULT_MARKER_COLOR = [196, 196, 196, 180]
 
 # ---------------------------------------------------------------------------
 # Status badge styling
@@ -114,16 +108,11 @@ CSS = """
         font-family: 'Inter', sans-serif;
         font-size: 13px; color: white;
     }
-    .score-1  { background: #9CA3AF; }
-    .score-2  { background: #868C98; }
-    .score-3  { background: #6B7280; }
-    .score-4  { background: #B4A028; }
-    .score-5  { background: #F59E0B; }
-    .score-6  { background: #F3781E; }
-    .score-7  { background: #EF5830; }
-    .score-8  { background: #EF4444; }
-    .score-9  { background: #DC3232; }
-    .score-10 { background: #B91C1C; }
+    .score-1  { background: #C4C4C4; color: #333; }
+    .score-2  { background: #E8A87C; }
+    .score-3  { background: #E07050; }
+    .score-4  { background: #D94432; }
+    .score-5  { background: #B91C1C; }
 
     .doc-card {
         padding: 8px 12px; border: 1px solid #E5E7EB;
