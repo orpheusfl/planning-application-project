@@ -17,7 +17,7 @@ from utilities.load import get_rds_connection, load_application_data, update_app
 logger = logging.getLogger(__name__)
 
 COUNCIL_NAME = "Tower Hamlets"
-MAX_APPLICATIONS_PER_RUN = 50
+MAX_APPLICATIONS_PER_RUN = 10
 
 
 def build_db_connection(db_host: str, db_port: str, db_name: str,
@@ -32,8 +32,20 @@ def build_db_connection(db_host: str, db_port: str, db_name: str,
     )
 
 
+def deduplicate_applications(applications: list[dict]) -> list[dict]:
+    """Remove duplicate applications by application_number, keeping the last occurrence.
+
+    Later entries are preferred because the weekly decided scraper runs second
+    and provides decision data that the current scraper may lack.
+    """
+    seen: dict[str, dict] = {}
+    for app in applications:
+        seen[app.get('application_number')] = app
+    return list(seen.values())
+
+
 def extract_all_applications(conn) -> list[dict]:
-    """Run both scrapers and return a combined list of raw application stubs."""
+    """Run both scrapers and return a deduplicated list of raw application stubs."""
     current = run_scraper_current_applications(conn)
     logger.info("Extracted %d current applications.", len(current))
 
@@ -41,7 +53,14 @@ def extract_all_applications(conn) -> list[dict]:
     logger.info("Extracted %d weekly decided applications.",
                 len(weekly_decided))
 
-    return current + weekly_decided
+    combined = current + weekly_decided
+    deduplicated = deduplicate_applications(combined)
+
+    if len(combined) != len(deduplicated):
+        logger.info("Deduplicated %d → %d applications.",
+                    len(combined), len(deduplicated))
+
+    return deduplicated
 
 
 def build_application(raw_app: dict) -> Application:

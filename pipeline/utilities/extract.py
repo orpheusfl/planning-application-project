@@ -640,11 +640,11 @@ def enrich_applications(
 # Database Helpers
 # ---------------------------------------------------------------------------
 
-def get_existing_applications(conn: Any) -> Dict[str, str]:
+def get_existing_applications(conn: Any) -> Dict[str, Dict[str, str]]:
     """
     Retrieves applications already stored in the database as a dict mapping
-    ``application_number`` → ``status``, for fast lookup of both existence and
-    current status.
+    ``application_number`` → ``{"status": ..., "decision_type": ...}``,
+    for fast lookup of existence, current status, and decision.
     """
     if conn is None:
         logger.warning(
@@ -652,14 +652,21 @@ def get_existing_applications(conn: Any) -> Dict[str, str]:
         return {}
 
     with conn.cursor() as cursor:
-        cursor.execute("""SELECT application_number, s.status_type FROM application
-        JOIN status_type s ON application.status_type_id = s.status_type_id""")
-        return {row[0]: row[1] for row in cursor.fetchall()}
+        cursor.execute("""
+            SELECT a.application_number, s.status_type, d.decision_type
+            FROM application a
+            JOIN status_type s ON a.status_type_id = s.status_type_id
+            LEFT JOIN decision_type d ON a.decision_type_id = d.decision_type_id
+        """)
+        return {
+            row[0]: {"status": row[1], "decision_type": row[2]}
+            for row in cursor.fetchall()
+        }
 
 
 def filter_new_applications(
     initial_application_info: List[Dict[str, str]],
-    existing_applications: Dict[str, str],
+    existing_applications: Dict[str, Dict[str, str]],
 ) -> List[Dict[str, str]]:
     """
     Filters application info to return only new applications (not in the database).
@@ -682,35 +689,63 @@ def filter_new_applications(
     return new_apps
 
 
+def _normalise(value: Optional[str]) -> str:
+    """Lowercase and strip a string for case-insensitive comparison."""
+    if not value:
+        return ""
+    return value.strip().lower()
+
+
+def _has_application_changed(
+    scraped_app: Dict[str, Any],
+    stored: Dict[str, str],
+) -> bool:
+    """Return True if the scraped status or decision differs from the stored values."""
+    if _normalise(scraped_app.get("status")) != _normalise(stored.get("status")):
+        return True
+    if _normalise(scraped_app.get("decision")) != _normalise(stored.get("decision_type")):
+        return True
+    return False
+
+
 def filter_changed_applications(
     enriched_apps: List[Dict[str, Any]],
-    existing_applications: Dict[str, str],
+    existing_applications: Dict[str, Dict[str, str]],
 ) -> List[Dict[str, Any]]:
     """
-    Filters enriched applications to return only those whose status has changed.
+    Filters enriched applications to return only those whose status or decision
+    has changed.
+
+    Comparisons are case-insensitive to avoid false positives from casing
+    differences between the scraper and the database.
 
     Returns a list of enriched applications annotated with ``database_action: "update"``.
-    This is called *after* enrichment so we can compare the current status with the
-    status stored in the database.
+    This is called *after* enrichment so we can compare scraped values with the
+    values stored in the database.
     """
     changed_apps = []
 
     for app in enriched_apps:
         app_id = app["application_number"]
 
-        if app_id in existing_applications:
-            if app.get("status") != existing_applications[app_id]:
-                logger.debug(
-                    "Status changed for %s: '%s' -> '%s'",
-                    app_id,
-                    existing_applications[app_id],
-                    app.get("status"),
-                )
-                changed_apps.append({**app, "database_action": "update"})
-            else:
-                logger.debug("Status unchanged for %s", app_id)
+        if app_id not in existing_applications:
+            continue
 
-    logger.info("Found %d applications with changed status", len(changed_apps))
+        stored = existing_applications[app_id]
+
+        if not _has_application_changed(app, stored):
+            logger.debug("No changes detected for %s", app_id)
+            continue
+
+        logger.debug(
+            "Change detected for %s: status '%s' -> '%s', decision '%s' -> '%s'",
+            app_id,
+            stored.get("status"), app.get("status"),
+            stored.get("decision_type"), app.get("decision"),
+        )
+        changed_apps.append({**app, "database_action": "update"})
+
+    logger.info("Found %d applications with changes", len(changed_apps))
     return changed_apps
 
 
