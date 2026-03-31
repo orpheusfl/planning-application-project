@@ -43,6 +43,54 @@ def haversine_miles(
     return 2 * EARTH_RADIUS_MILES * math.asin(math.sqrt(a))
 
 
+def geojson_bounds(geojson: dict) -> tuple[float, float, float]:
+    """Return ``(center_lat, center_lon, zoom)`` for a GeoJSON FeatureCollection.
+
+    Computes the bounding box of all coordinates in the GeoJSON and
+    derives a center point and an approximate Mapbox zoom level that
+    fits the boundary comfortably.
+    """
+    min_lon = float("inf")
+    max_lon = float("-inf")
+    min_lat = float("inf")
+    max_lat = float("-inf")
+
+    for feature in geojson.get("features", []):
+        geometry = feature.get("geometry", {})
+        coord_type = geometry.get("type", "")
+        coords = geometry.get("coordinates", [])
+
+        if coord_type == "Polygon":
+            rings = coords
+        elif coord_type == "MultiPolygon":
+            rings = [ring for polygon in coords for ring in polygon]
+        else:
+            continue
+
+        for ring in rings:
+            for lon, lat, *_ in ring:
+                min_lon = min(min_lon, lon)
+                max_lon = max(max_lon, lon)
+                min_lat = min(min_lat, lat)
+                max_lat = max(max_lat, lat)
+
+    center_lat = (min_lat + max_lat) / 2
+    center_lon = (min_lon + max_lon) / 2
+
+    # Approximate zoom from the latitude span (degrees → Mapbox zoom)
+    lat_span = max_lat - min_lat
+    lon_span = max_lon - min_lon
+    span = max(lat_span, lon_span)
+
+    if span <= 0:
+        zoom = 14.0
+    else:
+        # ~360° visible at zoom 0; each zoom level halves the span
+        zoom = math.log2(360 / span) - 0.5  # slight padding
+
+    return center_lat, center_lon, round(zoom, 1)
+
+
 def generate_circle_polygon(
     lat: float, lon: float, radius_miles: float
 ) -> list[list[float]]:
