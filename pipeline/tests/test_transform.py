@@ -5,18 +5,20 @@ Comprehensive tests for the Application class covering:
 - Functions with external dependencies (mocked: requests, Selenium, OpenAI, fitz)
 - Orchestration and integration tests
 - Error handling and edge cases
+- Parallel LLM call dispatch and result merging
 
 All tests are isolated from external services and use mocks.
 """
 
 from datetime import datetime
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, patch, MagicMock
 
 import pytest
 import requests
 
 from ..utilities.transform import Application
+from ..utilities.config import SUB_SCORE_RUBRICS
 
 
 class TestFormatAddress:
@@ -129,62 +131,74 @@ class TestCleanPdfText:
         assert result == "Line1 Line2 Line3"
 
 
-class TestBuildLlmAnalysisPrompt:
-    """Tests for building prompts for LLM analysis."""
+class TestBuildSummaryPrompt:
+    """Tests for _build_summary_prompt."""
 
     def test_happy_path_valid_inputs(self, sample_application):
         """Build valid prompt from PDF text and description with address and postcode."""
-        pdf_data = [
-            {"document_type": "Planning Statement", "text": "Statement content"},
-            {"document_type": "Design & Access", "text": "Design content"}
-        ]
+        prompt = sample_application._build_summary_prompt(
+            "PLANNING STATEMENT:\nStatement content\n\nDESIGN & ACCESS:\nDesign content",
+            "Description",
+            "123 Test Street, London E3 2JP",
+            "The postcode 'E3 2JP' appears complete.",
+        )
 
-        result = sample_application.build_llm_analysis_prompt(
-            pdf_data, "Description", "123 Test Street, London E3 2JP", "E3 2JP")
+        assert "PLANNING STATEMENT" in prompt
+        assert "DESIGN & ACCESS" in prompt
+        assert "Statement content" in prompt
+        assert "Design content" in prompt
+        assert "summary" in prompt.lower()
+        assert "123 Test Street, London E3 2JP" in prompt
+        assert "postcode" in prompt.lower()
+        assert "inline references" in prompt.lower() or "source:" in prompt.lower()
 
-        assert "PLANNING STATEMENT" in result
-        assert "DESIGN & ACCESS" in result
-        assert "Statement content" in result
-        assert "Design content" in result
-        assert "summary" in result.lower()
-        assert "123 Test Street, London E3 2JP" in result
-        assert "postcode" in result.lower()
-        assert "inline references" in result.lower() or "source:" in result.lower()
-
-    def test_empty_pdf_text_list(self, sample_application):
-        """Build prompt when PDF text list is empty."""
-        result = sample_application.build_llm_analysis_prompt(
-            [], "Description", "123 Test Street, London E3 2JP", "E3 2JP")
-        assert isinstance(result, str)
-        assert len(result) > 0
-        assert "123 Test Street, London E3 2JP" in result
+    def test_empty_pdf_text(self, sample_application):
+        """Build prompt when PDF text is empty."""
+        prompt = sample_application._build_summary_prompt(
+            "", "Description", "123 Test Street, London E3 2JP", "instructions")
+        assert isinstance(prompt, str)
+        assert len(prompt) > 0
+        assert "123 Test Street, London E3 2JP" in prompt
 
     def test_single_pdf(self, sample_application):
-        """Build prompt with single PDF document."""
-        pdf_data = [{"document_type": "Planning", "text": "Content"}]
-        result = sample_application.build_llm_analysis_prompt(
-            pdf_data, "Desc", "456 Another Road, London W1A 1AA", "W1A 1AA")
-        assert "PLANNING" in result
-        assert "Content" in result
-        assert "456 Another Road, London W1A 1AA" in result
+        """Build prompt with single PDF document text."""
+        prompt = sample_application._build_summary_prompt(
+            "PLANNING:\nContent",
+            "Desc",
+            "456 Another Road, London W1A 1AA",
+            "instructions",
+        )
+        assert "PLANNING" in prompt
+        assert "Content" in prompt
+        assert "456 Another Road, London W1A 1AA" in prompt
 
     def test_incomplete_postcode_instructions(self, sample_application):
         """Verify prompt includes special instructions for incomplete postcodes."""
-        pdf_data = [{"document_type": "Application", "text": "Details"}]
-        result = sample_application.build_llm_analysis_prompt(
-            pdf_data, "Description", "789 Incomplete Road, London E14", "E14")
+        instructions = sample_application._get_postcode_instructions("E14")
+        prompt = sample_application._build_summary_prompt(
+            "PDF TEXT", "Description", "789 Incomplete Road, London E14", instructions)
 
-        assert "E14" in result
-        assert "incomplete" in result.lower() or "complete" in result.lower()
+        assert "E14" in prompt
+        assert "incomplete" in prompt.lower() or "complete" in prompt.lower()
 
     def test_complete_postcode_instructions(self, sample_application):
         """Verify prompt includes verification instructions for complete postcodes."""
-        pdf_data = [{"document_type": "Application", "text": "Details"}]
-        result = sample_application.build_llm_analysis_prompt(
-            pdf_data, "Description", "789 Complete Road, London SW1A 1AA", "SW1A 1AA")
+        instructions = sample_application._get_postcode_instructions(
+            "SW1A 1AA")
+        prompt = sample_application._build_summary_prompt(
+            "PDF TEXT", "Description", "789 Complete Road, London SW1A 1AA", instructions)
 
-        assert "SW1A 1AA" in result
-        assert "verify" in result.lower()
+        assert "SW1A 1AA" in prompt
+        assert "verify" in prompt.lower()
+
+    def test_does_not_include_sub_scores(self, sample_application):
+        """Summary prompt should not request sub-score fields."""
+        prompt = sample_application._build_summary_prompt(
+            "PDF", "Desc", "Addr", "instructions")
+        assert "score_disturbance" not in prompt
+        assert "score_scale" not in prompt
+        assert "score_housing" not in prompt
+        assert "score_environment" not in prompt
 
 
 class TestExtractTextFromPdf:
@@ -308,3 +322,179 @@ class TestToDict:
         assert result['address'] == sample_application.address
         assert result['postcode'] == sample_application.postcode
         assert result['validation_date'] == sample_application.validation_date
+
+
+# ============================================================================
+# PARALLEL LLM ANALYSIS TESTS
+# ============================================================================
+
+
+class TestCallLlm:
+    """Tests for _call_llm (single LLM call)."""
+
+    def test_returns_parsed_json(self, sample_application):
+        """Valid JSON response is parsed and returned as a dict."""
+        mock_client = MagicMock()
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = '{"score_scale": 3}'
+        mock_client.chat.completions.create.return_value = mock_response
+
+        result = sample_application._call_llm(
+            mock_client, "system msg", "user prompt"
+        )
+        assert result == {"score_scale": 3}
+
+    def test_raises_on_invalid_json(self, sample_application):
+        """Raise ValueError when the LLM returns non-JSON."""
+        mock_client = MagicMock()
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = "not json at all"
+        mock_client.chat.completions.create.return_value = mock_response
+
+        with pytest.raises(ValueError, match="Invalid JSON"):
+            sample_application._call_llm(
+                mock_client, "system msg", "user prompt"
+            )
+
+
+class TestAnalysePdfTextParallel:
+    """Tests for the parallelised analyse_pdf_text method."""
+
+    def _make_mock_client(self, responses: dict[str, str]) -> MagicMock:
+        """Create a mock OpenAI client that returns different JSON per call.
+
+        Args:
+            responses: Mapping of JSON response strings to return in order
+        """
+        mock_client = MagicMock()
+        side_effects = []
+        for json_str in responses.values():
+            mock_resp = MagicMock()
+            mock_resp.choices = [MagicMock()]
+            mock_resp.choices[0].message.content = json_str
+            side_effects.append(mock_resp)
+
+        mock_client.chat.completions.create.side_effect = side_effects
+        return mock_client
+
+    @patch.object(Application, '_setup_openai_client')
+    def test_merges_all_five_results(self, mock_setup, sample_application):
+        """Five parallel calls merge into the expected return schema."""
+        responses = {
+            "summary": '{"summary": "A big tower.", "postcode": "E3 2JP"}',
+            "score_disturbance": '{"score_disturbance": 4}',
+            "score_scale": '{"score_scale": 5}',
+            "score_housing": '{"score_housing": 3}',
+            "score_environment": '{"score_environment": 2}',
+        }
+        mock_setup.return_value = self._make_mock_client(responses)
+
+        pdf_data = [{"document_type": "Application Form", "text": "Content"}]
+        result = sample_application.analyse_pdf_text(pdf_data, "fake-key")
+
+        assert result['ai_summary'] == "A big tower."
+        assert result['postcode'] == "E3 2JP"
+        assert result['score_disturbance'] == 4
+        assert result['score_scale'] == 5
+        assert result['score_housing'] == 3
+        assert result['score_environment'] == 2
+        assert result['public_interest_score'] == round((4 + 5 + 3 + 2) / 4)
+
+    @patch.object(Application, '_setup_openai_client')
+    def test_return_schema_matches_original(self, mock_setup, sample_application):
+        """Return dict has exactly the expected keys."""
+        responses = {
+            "summary": '{"summary": "Summary.", "postcode": "SW1A 1AA"}',
+            "score_disturbance": '{"score_disturbance": 1}',
+            "score_scale": '{"score_scale": 1}',
+            "score_housing": '{"score_housing": 1}',
+            "score_environment": '{"score_environment": 1}',
+        }
+        mock_setup.return_value = self._make_mock_client(responses)
+
+        pdf_data = [{"document_type": "Form", "text": "text"}]
+        result = sample_application.analyse_pdf_text(pdf_data, "fake-key")
+
+        expected_keys = {
+            'ai_summary', 'public_interest_score',
+            'score_scale', 'score_disturbance',
+            'score_environment', 'score_housing', 'postcode',
+        }
+        assert set(result.keys()) == expected_keys
+
+    @patch.object(Application, '_setup_openai_client')
+    def test_public_interest_score_is_average(self, mock_setup, sample_application):
+        """public_interest_score is the rounded mean of the four sub-scores."""
+        responses = {
+            "summary": '{"summary": "S", "postcode": "E1 1AA"}',
+            "score_disturbance": '{"score_disturbance": 2}',
+            "score_scale": '{"score_scale": 3}',
+            "score_housing": '{"score_housing": 4}',
+            "score_environment": '{"score_environment": 5}',
+        }
+        mock_setup.return_value = self._make_mock_client(responses)
+
+        pdf_data = [{"document_type": "Form", "text": "t"}]
+        result = sample_application.analyse_pdf_text(pdf_data, "fake-key")
+
+        assert result['public_interest_score'] == round((2 + 3 + 4 + 5) / 4)
+
+    @patch.object(Application, '_setup_openai_client')
+    def test_makes_five_api_calls(self, mock_setup, sample_application):
+        """Exactly five LLM calls are made (1 summary + 4 sub-scores)."""
+        responses = {
+            "summary": '{"summary": "S", "postcode": "E1 1AA"}',
+            "score_disturbance": '{"score_disturbance": 1}',
+            "score_scale": '{"score_scale": 1}',
+            "score_housing": '{"score_housing": 1}',
+            "score_environment": '{"score_environment": 1}',
+        }
+        mock_client = self._make_mock_client(responses)
+        mock_setup.return_value = mock_client
+
+        pdf_data = [{"document_type": "Form", "text": "t"}]
+        sample_application.analyse_pdf_text(pdf_data, "fake-key")
+
+        assert mock_client.chat.completions.create.call_count == 5
+
+    @patch.object(Application, '_setup_openai_client')
+    def test_single_call_failure_raises(self, mock_setup, sample_application):
+        """If one LLM call raises, the error propagates."""
+        mock_client = MagicMock()
+
+        call_count = 0
+
+        def side_effect(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 3:
+                raise ConnectionError("API timeout")
+            mock_resp = MagicMock()
+            mock_resp.choices = [MagicMock()]
+            mock_resp.choices[0].message.content = '{"summary": "S", "postcode": "E1 1AA"}'
+            return mock_resp
+
+        mock_client.chat.completions.create.side_effect = side_effect
+        mock_setup.return_value = mock_client
+
+        pdf_data = [{"document_type": "Form", "text": "t"}]
+        with pytest.raises(ConnectionError):
+            sample_application.analyse_pdf_text(pdf_data, "fake-key")
+
+    @patch.object(Application, '_setup_openai_client')
+    def test_missing_sub_score_raises_value_error(self, mock_setup, sample_application):
+        """Raise ValueError if a sub-score call returns wrong key."""
+        responses = {
+            "summary": '{"summary": "S", "postcode": "E1 1AA"}',
+            "score_disturbance": '{"score_disturbance": 1}',
+            "score_scale": '{"score_scale": 1}',
+            "score_housing": '{"wrong_key": 1}',
+            "score_environment": '{"score_environment": 1}',
+        }
+        mock_setup.return_value = self._make_mock_client(responses)
+
+        pdf_data = [{"document_type": "Form", "text": "t"}]
+        with pytest.raises(ValueError, match="missing required fields"):
+            sample_application.analyse_pdf_text(pdf_data, "fake-key")

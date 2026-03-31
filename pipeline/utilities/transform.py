@@ -7,6 +7,7 @@ import re
 import shutil
 import tempfile
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
 
@@ -21,6 +22,7 @@ from selenium.webdriver import Chrome
 from selenium.webdriver.chrome.options import Options
 
 from utilities.extract import extract_csrf_token
+from utilities.config import LLM_MODEL, MAX_PARALLEL_LLM_CALLS, SUB_SCORE_RUBRICS
 
 
 logger = logging.getLogger(__name__)
@@ -212,94 +214,128 @@ class Application:
         text = ' '.join(text.split())
         return text
 
-    def build_llm_analysis_prompt(
+    def _build_summary_prompt(
             self,
-            pdf_data: list[dict],
+            formatted_pdf_text: str,
             original_description: str,
             full_address: str,
-            incomplete_postcode: str) -> str:
-        """Build structured prompt for LLM analysis combining PDF text and description.
+            postcode_instructions: str) -> str:
+        """Build a focused prompt that requests only the summary and postcode.
 
         Args:
-            pdf_data: List of dicts with 'document_type' and 'text' keys from extracted PDFs
+            formatted_pdf_text: Pre-formatted PDF text block
             original_description: Original application description
             full_address: Complete address including postcode
-            incomplete_postcode: Postcode extracted from address (may be incomplete)
+            postcode_instructions: Instructions for postcode validation
 
         Returns:
-            Prompt string for LLM analysis requesting JSON output
+            Prompt string requesting JSON with 'summary' and 'postcode' fields
         """
-        formatted_pdf_text = "\n\n".join(
-            f"{pdf['document_type'].upper()}:\n{pdf['text']}"
-            for pdf in pdf_data
-        )
+        return f"""Analyze this planning application and return a JSON response with two fields:
 
-        # Determine postcode instructions based on whether it looks complete
-        postcode_instructions = self._get_postcode_instructions(
-            postcode=incomplete_postcode)
+1. "summary": A 2-3 sentence summary highlighting key details residents need to
+know (housing units, effects on neighboring property value, public amenities, traffic impact, transport links, affordable
+housing percentage, environmental concerns). CRITICAL: Include inline references
+directly within the summary text showing exactly which PDF section each fact came from.
+Use the format: "...specific detail (<document_type>, page X)..." embedded
+throughout the summary. For example: "The scheme includes 500 units of housing
+(source: Application Form, page 2) with 25% affordable housing (source: Design Report, page 5)..."
 
-        prompt = f"""Analyze this planning application and return a JSON response with six fields:
-                    1. "summary": A 2-3 sentence summary highlighting key details residents need to
-                    know (housing units, effects on neighboring property value, public amenities, traffic impact, transport links, affordable
-                    housing percentage, environmental concerns). CRITICAL: Include inline references
-                    directly within the summary text showing exactly which PDF section each fact came from.
-                    Use the format: "...specific detail (<document_type>, page X)..." embedded
-                    throughout the summary. For example: "The scheme includes 500 units of housing
-                    (source: Application Form, page 2) with 25% affordable housing (source: Design Report, page 5)..."
+2. "postcode": The complete and correct UK postcode for this application.
+{postcode_instructions}
 
-                    2. "score_disturbance": Level of disturbance (1–5). Consider sound, spatial disruption, and air quality.
-                       1 = No noticeable change. Example: internal refurbishment, like-for-like window replacement.
-                       2 = Minor, short-lived disruption. Example: scaffolding for a few weeks, occasional drilling during work hours.
-                       3 = Moderate disruption for several months. Example: temporary road narrowing, regular construction noise Mon–Fri, some dust.
-                       4 = Significant disruption over 6+ months. Example: road closures, heavy machinery daily, noticeable dust and vibration, parking displaced.
-                       5 = Severe, prolonged disruption for 1+ years. Example: major road diversions, pile-driving, demolition dust requiring air quality monitoring, loss of pavement access.
+Respond ONLY with valid JSON, no additional text.
 
-                    3. "score_scale": Scale of development (1–5). Consider the physical size and duration of works.
-                       1 = Tiny, completed in days. Example: new shop sign, single tree removal, fence replacement.
-                       2 = Small, completed in weeks. Example: loft conversion, single-storey rear extension, dropped kerb.
-                       3 = Medium, several months. Example: two-storey side extension, conversion of house to flats, new roof.
-                       4 = Large, 6–12 months. Example: new-build block of 10–50 flats, demolition and rebuild of a commercial unit.
-                       5 = Major, 1+ years. Example: multi-phase estate regeneration, 100+ residential units, tower block construction.
+Original Application Description:
+{original_description}
 
-                    4. "score_housing": Effect on local housing prices (1–5). Consider the rough potential impact based on similar developments.
-                       1 = No measurable effect. Example: internal works, change of use from one shop to another.
-                       2 = Negligible effect. Example: single new dwelling or conversion of house into 2 flats.
-                       3 = Small but noticeable effect. Example: new block of 10–20 units, may slightly increase supply and competition.
-                       4 = Moderate effect. Example: 50–100 new homes, affordable housing included, likely to shift local rental and sale prices by a few percent.
-                       5 = Significant market impact. Example: 200+ units or estate regeneration that redefines the area, likely to attract new demographics and visibly move prices.
+Full Address:
+{full_address}
 
-                    5. "score_environment": Environmental and community impact (1–5). Consider wildlife, community spaces, and the effect of new residents on the local area.
-                       1 = No environmental or community change. Example: internal works, signage.
-                       2 = Minimal impact. Example: removal of a single tree (replaced), minor change to a private garden.
-                       3 = Moderate impact. Example: loss of a small green area, new residents bringing footfall to local shops but also more waste and noise.
-                       4 = Notable impact. Example: building on informal green space, loss of biodiversity corridor, development near a watercourse, 50+ new residents changing the character of a quiet street.
-                       5 = Major impact. Example: building on floodplain, large-scale tree removal, loss of allotments or playing fields, 200+ new residents fundamentally changing the neighbourhood feel.
+Extracted PDF Content:
+{formatted_pdf_text}
 
-                    6. "postcode": The complete and correct UK postcode for this application.
-                    {postcode_instructions}
-                
-                        
-                                Respond ONLY with valid JSON, no additional text.
+Focus the summary on: proposed uses, number of units/buildings, key impacts on the
+neighborhood, affordable housing provisions, and any notable amenities or concerns.
+If there is no pdf content, summarise based on the original description.
 
-            Original Application Description:
-            {original_description}
-
-            Full Address:
-            {full_address}
-
-            Extracted PDF Content:
-            {formatted_pdf_text}
-
-            Focus the summary on: proposed uses, number of units/buildings, key impacts on the
-            neighborhood, affordable housing provisions, and any notable amenities or concerns.
-            If there is no pdf content, summarise based on the original description.
-
-            Use UK English and be concise, but using full sentences. Avoid generic statements
-            and focus on specific details that would be relevant to local residents.
+Use UK English and be concise, but using full sentences. Avoid generic statements
+and focus on specific details that would be relevant to local residents.
 
 Return format:
-{{"summary": "...", "score_disturbance": <1-5>, "score_scale": <1-5>, "score_housing": <1-5>, "score_environment": <1-5>, "postcode": "..."}}"""
-        return prompt
+{{"summary": "...", "postcode": "..."}}"""
+
+    def _build_sub_score_prompt(
+            self,
+            score_name: str,
+            formatted_pdf_text: str,
+            original_description: str,
+            full_address: str) -> str:
+        """Build a focused prompt that requests a single sub-score.
+
+        Args:
+            score_name: Key into SUB_SCORE_RUBRICS (e.g. 'score_disturbance')
+            formatted_pdf_text: Pre-formatted PDF text block
+            original_description: Original application description
+            full_address: Complete address including postcode
+
+        Returns:
+            Prompt string requesting JSON with one score field
+        """
+        rubric = SUB_SCORE_RUBRICS[score_name]
+
+        return f"""Analyze this planning application and return a JSON response with one field:
+
+{rubric}
+
+Respond ONLY with valid JSON, no additional text.
+
+Original Application Description:
+{original_description}
+
+Full Address:
+{full_address}
+
+Extracted PDF Content:
+{formatted_pdf_text}
+
+Return format:
+{{"{score_name}": <1-5>}}"""
+
+    def _call_llm(self, client: openai.OpenAI, system_message: str, prompt: str) -> dict:
+        """Make a single LLM API call and return the parsed JSON response.
+
+        This is the isolated unit of work submitted to the thread pool.
+
+        Args:
+            client: Configured OpenAI client (thread-safe)
+            system_message: System role content for the chat completion
+            prompt: User role content for the chat completion
+
+        Returns:
+            Parsed JSON dict from the LLM response
+        """
+        start = time.perf_counter()
+
+        response = client.chat.completions.create(
+            model=LLM_MODEL,
+            messages=[
+                {"role": "system", "content": system_message},
+                {"role": "user", "content": prompt},
+            ],
+        )
+
+        elapsed = time.perf_counter() - start
+        logger.info("LLM call completed in %.2fs", elapsed)
+
+        json_text = response.choices[0].message.content
+
+        try:
+            return json.loads(json_text)
+        except json.JSONDecodeError as e:
+            logger.error("Failed to parse LLM response as JSON: %s", e)
+            logger.error("Received response: %s", json_text)
+            raise ValueError(f"Invalid JSON from LLM: {str(e)}") from e
 
     def _get_postcode_instructions(self, postcode: str) -> str:
         """Generate postcode validation instructions based on postcode completeness.
@@ -368,60 +404,141 @@ Return format:
                 "Error initializing OpenAI client: %s", e, exc_info=True)
             raise
 
-    def analyse_pdf_text(self, prompt: str, api_key: str) -> dict:
-        """Analyze prompt using OpenAI LLM API and return structured output.
+    def analyse_pdf_text(self, pdf_data: list[dict], api_key: str) -> dict:
+        """Analyse application PDFs by dispatching parallel LLM calls.
+
+        Sends five concurrent requests — one for the summary/postcode and one
+        per sub-score — then merges the results into a single dict.
 
         Args:
-            prompt: Prompt string for LLM analysis
+            pdf_data: List of dicts with 'document_type' and 'text' keys
             api_key: OpenAI API key for authentication
 
         Returns:
-            Dict with 'ai_summary' (str), 'public_interest_score' (int), and 'postcode' (str) keys
+            Dict with 'ai_summary', 'public_interest_score', 'score_*', and 'postcode' keys
         """
         client = self._setup_openai_client(api_key)
-
-        response = client.chat.completions.create(
-            model="gpt-5-nano",
-            messages=[
-                {"role": "system", "content": "You are a planning analyst that provides concise, resident-focused summaries. Always respond with valid JSON only."},
-                {"role": "user", "content": prompt}
-            ]
+        system_message = (
+            "You are a planning analyst that provides concise, "
+            "resident-focused summaries. Always respond with valid JSON only."
         )
 
-        logger.info("Received response from OpenAI API")
+        formatted_pdf_text = "\n\n".join(
+            f"{pdf['document_type'].upper()}:\n{pdf['text']}"
+            for pdf in pdf_data
+        )
+        postcode_instructions = self._get_postcode_instructions(self.postcode)
 
-        json_text = response.choices[0].message.content
+        summary_prompt = self._build_summary_prompt(
+            formatted_pdf_text,
+            self._raw_description,
+            self.address,
+            postcode_instructions,
+        )
 
-        try:
-            result = json.loads(json_text)
-        except json.JSONDecodeError as e:
-            logger.error("Failed to parse LLM response as JSON: %s", e)
-            logger.error("Received response: %s", json_text)
-            raise ValueError(f"Invalid JSON from LLM: {str(e)}") from e
+        score_prompts = {
+            score_name: self._build_sub_score_prompt(
+                score_name,
+                formatted_pdf_text,
+                self._raw_description,
+                self.address,
+            )
+            for score_name in SUB_SCORE_RUBRICS
+        }
 
-        try:
-            sub_scores = [
-                result['score_scale'],
-                result['score_disturbance'],
-                result['score_environment'],
-                result['score_housing'],
-            ]
-            public_interest_score = round(sum(sub_scores) / len(sub_scores))
+        total_start = time.perf_counter()
 
-            return {
-                'ai_summary': result['summary'],
-                'public_interest_score': public_interest_score,
-                'score_scale': result['score_scale'],
-                'score_disturbance': result['score_disturbance'],
-                'score_environment': result['score_environment'],
-                'score_housing': result['score_housing'],
-                'postcode': result.get('postcode', ''),
-            }
-        except KeyError as e:
-            logger.error("Missing required field in LLM response: %s", e)
-            logger.error("Parsed JSON: %s", result)
+        # Dispatch all LLM calls in parallel and collect results
+        merged = self._dispatch_parallel_llm_calls(
+            client, system_message, summary_prompt, score_prompts,
+        )
+
+        total_elapsed = time.perf_counter() - total_start
+        logger.info(
+            "All %s parallel LLM calls completed in %.2fs",
+            len(score_prompts) + 1, total_elapsed,
+        )
+
+        # Validate and assemble the final result
+        return self._assemble_analysis_result(merged)
+
+    def _dispatch_parallel_llm_calls(
+        self,
+        client: openai.OpenAI,
+        system_message: str,
+        summary_prompt: str,
+        score_prompts: dict[str, str],
+    ) -> dict:
+        """Submit summary + sub-score prompts to the LLM in parallel and merge results.
+
+        Each call returns a small JSON dict. The dicts are merged into one
+        combined result containing the summary, postcode, and every sub-score.
+
+        Args:
+            client: Configured OpenAI client
+            system_message: System-level instruction for the LLM
+            summary_prompt: Prompt requesting the summary and postcode
+            score_prompts: Mapping of score name → prompt for each sub-score
+
+        Returns:
+            Merged dict of all LLM response fields
+        """
+        merged: dict = {}
+        futures: dict[str, object] = {}
+
+        with ThreadPoolExecutor(max_workers=MAX_PARALLEL_LLM_CALLS) as executor:
+            # 1 summary/postcode call + 4 independent sub-score calls
+            futures["summary"] = executor.submit(
+                self._call_llm, client, system_message, summary_prompt,
+            )
+            for score_name, prompt in score_prompts.items():
+                futures[score_name] = executor.submit(
+                    self._call_llm, client, system_message, prompt,
+                )
+
+            # Collect results as each future completes
+            for label, future in futures.items():
+                result = future.result()
+                merged.update(result)
+                logger.info("Received result for '%s'", label)
+
+        return merged
+
+    def _assemble_analysis_result(self, merged: dict) -> dict:
+        """Validate merged LLM results and compute the overall interest score.
+
+        Args:
+            merged: Combined dict from all parallel LLM calls
+
+        Returns:
+            Final analysis dict with ai_summary, public_interest_score,
+            individual sub-scores, and postcode
+
+        Raises:
+            ValueError: If any required field is missing from the merged results
+        """
+        sub_score_names = list(SUB_SCORE_RUBRICS.keys())
+
+        missing = [s for s in sub_score_names if s not in merged]
+        if missing:
             raise ValueError(
-                f"LLM response missing required field: {str(e)}") from e
+                f"LLM responses missing required fields: {missing}")
+
+        if "summary" not in merged:
+            raise ValueError("LLM response missing required field: 'summary'")
+
+        sub_scores = [merged[s] for s in sub_score_names]
+        public_interest_score = round(sum(sub_scores) / len(sub_scores))
+
+        return {
+            'ai_summary': merged['summary'],
+            'public_interest_score': public_interest_score,
+            'score_disturbance': merged['score_disturbance'],
+            'score_scale': merged['score_scale'],
+            'score_housing': merged['score_housing'],
+            'score_environment': merged['score_environment'],
+            'postcode': merged.get('postcode', ''),
+        }
 
     def _get_browser_cookies(self, url: str) -> tuple[list[dict], str | None]:
         """Retrieve cookies from browser after navigating to URL.
@@ -651,12 +768,8 @@ Return format:
                 )
                 raise
 
-        logger.info("Building LLM analysis prompt")
-        prompt = self.build_llm_analysis_prompt(
-            pdf_texts, self._raw_description, self.address, self.postcode)
-
-        logger.info("Analyzing with OpenAI LLM")
-        analysis = self.analyse_pdf_text(prompt, api_key)
+        logger.info("Analyzing with parallel LLM calls")
+        analysis = self.analyse_pdf_text(pdf_texts, api_key)
 
         logger.info("PDF analysis completed successfully")
         return {
