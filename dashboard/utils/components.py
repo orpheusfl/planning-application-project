@@ -289,7 +289,7 @@ def render_sidebar(
     *location_info* is a dict with ``lat``, ``lon``, ``radius_miles`` when a
     postcode filter is active, otherwise ``None``.
     """
-    st.sidebar.image(LOGO_PATH, width=220)
+    # st.sidebar.image(LOGO_PATH, width=220)
     st.sidebar.caption("Tower Hamlets planning applications")
 
     df = applications.copy()
