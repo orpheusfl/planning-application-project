@@ -729,6 +729,8 @@ def _run_scraper_pipeline(
     session = create_scraper_session()
     existing = get_existing_applications(conn)
 
+    logger.info("Starting scrape: for %s", label)
+
     stubs = scraper_to_run(session)
 
     # Filter new applications before enrichment to avoid unnecessary work
@@ -752,7 +754,7 @@ def _run_scraper_pipeline(
 
 def run_scraper_current_applications(conn: Any) -> List[Dict[str, Any]]:
     """Runs the scraper pipeline for current applications."""
-    logger.info("Starting scrape: current applications")
+
     return _run_scraper_pipeline(
         conn,
         scraper_to_run=get_current_applications,
@@ -762,6 +764,7 @@ def run_scraper_current_applications(conn: Any) -> List[Dict[str, Any]]:
 
 def run_scraper_weekly_applications(conn: Any) -> List[Dict[str, Any]]:
     """Runs the scraper pipeline for weekly decided applications."""
+
     logger.info("Starting scrape: weekly decided applications")
     return _run_scraper_pipeline(
         conn,
