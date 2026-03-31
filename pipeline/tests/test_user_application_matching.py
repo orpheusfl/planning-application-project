@@ -53,7 +53,11 @@ def sample_users_raw() -> list[dict]:
             "lat": 51.5074,
             "long": -0.0759,
             "radius_miles": 2.0,
-            "min_interest": 6
+            "min_interest_score": 6,
+            "min_score_disturbance": 1,
+            "min_score_scale": 1,
+            "min_score_housing": 1,
+            "min_score_environment": 1,
         },
         {
             "email": "user2@example.com",
@@ -61,7 +65,11 @@ def sample_users_raw() -> list[dict]:
             "lat": 51.5312,
             "long": -0.0567,
             "radius_miles": 1.5,
-            "min_interest": 5
+            "min_interest_score": 5,
+            "min_score_disturbance": 1,
+            "min_score_scale": 1,
+            "min_score_housing": 1,
+            "min_score_environment": 1,
         },
         {
             "email": "user3@example.com",
@@ -69,7 +77,11 @@ def sample_users_raw() -> list[dict]:
             "lat": 51.5199,
             "long": -0.1019,
             "radius_miles": 3.0,
-            "min_interest": 7
+            "min_interest_score": 7,
+            "min_score_disturbance": 1,
+            "min_score_scale": 1,
+            "min_score_housing": 1,
+            "min_score_environment": 1,
         },
     ]
 
@@ -257,7 +269,7 @@ def test_match_applications_to_users_interest_filtering(
         sample_users_gdf, sample_applications_gdf)
 
     for _, row in result.iterrows():
-        assert row["public_interest_score"] >= row["min_interest"]
+        assert row["public_interest_score"] >= row["min_interest_score"]
 
 
 def test_match_applications_to_users_no_matches():
@@ -268,7 +280,11 @@ def test_match_applications_to_users_no_matches():
         "lat": 51.5074,
         "long": -0.0759,
         "radius_miles": 0.1,
-        "min_interest": 50
+        "min_interest_score": 50,
+        "min_score_disturbance": 1,
+        "min_score_scale": 1,
+        "min_score_housing": 1,
+        "min_score_environment": 1,
     }]
     apps_data = [{
         "application_id": "PA_25_00001",
@@ -296,7 +312,11 @@ def test_match_applications_to_users_interest_score_filtering():
         "lat": 51.5100,
         "long": -0.0750,
         "radius_miles": 2.0,
-        "min_interest": 70
+        "min_interest_score": 70,
+        "min_score_disturbance": 1,
+        "min_score_scale": 1,
+        "min_score_housing": 1,
+        "min_score_environment": 1,
     }]
     apps_data = [
         {
@@ -350,7 +370,7 @@ def test_full_workflow_users_and_apps(
         assert "email" in result.columns
         assert "application_id" in result.columns
         assert "public_interest_score" in result.columns
-        assert "min_interest" in result.columns
+        assert "min_interest_score" in result.columns
 
 
 def test_matching_respects_both_proximity_and_interest(
@@ -362,4 +382,4 @@ def test_matching_respects_both_proximity_and_interest(
         sample_users_gdf, sample_applications_gdf)
 
     for _, row in result.iterrows():
-        assert row["public_interest_score"] >= row["min_interest"]
+        assert row["public_interest_score"] >= row["min_interest_score"]
