@@ -1,17 +1,25 @@
 import os
 import logging
+import json
 
 import openai
 from dotenv import load_dotenv
+import boto3
 
 load_dotenv()
+
+AWS_REGION = 'eu-west-2'
+SECRET_NAME = 'c22-planning-pipeline-llm-api-key'
 
 
 def generate_client() -> openai.OpenAI:
     """Generates an OpenAI client using the API key from environment variables."""
-    api_key = os.getenv("OPENAI_API_KEY")
+    client = boto3.client("secretsmanager", region_name=AWS_REGION)
+    response = client.get_secret_value(SecretId=SECRET_NAME)
+    secret = json.loads(response["SecretString"])
+    api_key = secret["api_key"]
     if not api_key:
-        raise ValueError("OPENAI_API_KEY environment variable is not set.")
+        raise ValueError("LLM_API_KEY environment variable is not set.")
     return openai.OpenAI(api_key=api_key)
 
 

@@ -18,10 +18,10 @@ logger = logging.getLogger(__name__)
 
 def _convert_to_native_python(obj: Any) -> Any:
     """Convert numpy/pandas types to native Python types for JSON serialization.
-    
+
     Args:
         obj: Object to convert
-        
+
     Returns:
         The object converted to a JSON-serializable type
     """
@@ -40,7 +40,7 @@ def _convert_to_native_python(obj: Any) -> Any:
 
 class ChatbotInterface:
     """Manages chatbot UI and conversation history in Streamlit.
-    
+
     Stores conversation history locally while calling a Lambda backend
     for generating responses.
     """
@@ -95,11 +95,11 @@ class ChatbotInterface:
 
     def _get_mock_response(self, user_question: str, question_type: str) -> str:
         """Generate a mock response for local development testing.
-        
+
         Args:
             user_question: The user's question
             question_type: The type of question
-            
+
         Returns:
             A mock response string
         """
@@ -125,11 +125,11 @@ class ChatbotInterface:
             The response text from the Lambda function or mock response
         """
         question_type = st.session_state.chatbot_question_type
-        
+
         # Use mock response if no endpoint is configured
         if self.use_mock:
             return self._get_mock_response(user_question, question_type)
-        
+
         history = self._get_current_history()
 
         payload = {
@@ -154,7 +154,7 @@ class ChatbotInterface:
                 timeout=120,
             )
             response.raise_for_status()
-            
+
             data = response.json()
             logger.debug(f"Response: {data}")
             if response.status_code == 200:
@@ -162,7 +162,7 @@ class ChatbotInterface:
             else:
                 error_msg = data.get("error", "Unknown error")
                 return f"Error: {error_msg}"
-        
+
         except requests.exceptions.Timeout as e:
             logger.error(f"Lambda request timed out: {str(e)}")
             return "Error: Request timed out. Please try again."
@@ -233,12 +233,12 @@ class ChatbotInterface:
                 if not application_id:
                     st.error("Please enter an Application ID for this question type.")
                     return
-            
+
             history = self._get_current_history()
-            
+
             with st.spinner("Getting response..."):
                 response = self._get_response(user_input, application_id)
-            
+
             history.append({"role": "user", "content": user_input})
             history.append({"role": "assistant", "content": response})
             self._set_current_history(history)
