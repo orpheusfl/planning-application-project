@@ -4,3 +4,4 @@ pymupdf
 python-dotenv
 psycopg2-binary
 urllib3
+python-dotenv
