@@ -18,18 +18,7 @@ BEGIN;
 INSERT INTO council (council_name) VALUES
     ('Tower Hamlets');
 
--- ==========================================================================
--- 2. Status types
--- ==========================================================================
-INSERT INTO status_type (status_type) VALUES
-    ('Appeal Decided'),
-    ('Appeal Lodged'),
-    ('Awaiting Decision'),
-    ('Decided'),
-    ('Received'),
-    ('Registered'),
-    ('Withdrawn'),
-    ('Unknown');
+
 
 
 COMMIT;
