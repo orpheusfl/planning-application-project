@@ -323,7 +323,7 @@ def render_sidebar(
     *selected_council* is the council name chosen in the sidebar, or ``None``
     when only one council exists (auto-selected).
     """
-    st.sidebar.image(LOGO_PATH, width=220)
+    # st.sidebar.image(LOGO_PATH, width=220)
     st.sidebar.caption("Tower Hamlets planning applications")
 
     df = applications.copy()
@@ -349,13 +349,24 @@ def render_sidebar(
         selected_council = st.session_state.get("map_selected_council")
 
     # Date range
-    min_date = df["date"].min().date()
-    max_date = df["date"].max().date()
-    days_in_data = (max_date - min_date).days
-    if days_in_data >= 30:
+    min_timestamp = df["date"].min()
+    max_timestamp = df["date"].max()
+    
+    # Handle NaT (Not a Time) values
+    if pd.isna(min_timestamp) or pd.isna(max_timestamp):
+        # Use default date range if no valid dates
+        max_date = datetime.now().date()
+        min_date = (datetime.now() - timedelta(days=90)).date()
         default_start = (datetime.now() - timedelta(days=30)).date()
     else:
-        default_start = min_date
+        min_date = min_timestamp.date()
+        max_date = max_timestamp.date()
+        days_in_data = (max_date - min_date).days
+        if days_in_data >= 30:
+            default_start = (datetime.now() - timedelta(days=30)).date()
+        else:
+            default_start = min_date
+    
     date_range = st.sidebar.date_input(
         "Filter by date",
         value=(default_start, max_date),
