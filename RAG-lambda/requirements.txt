@@ -5,3 +5,4 @@ python-dotenv
 psycopg2-binary
 urllib3
 openai
+python-dotenv

@@ -153,6 +153,22 @@ def _show_subscribe_dialog() -> None:
     postcode = st.text_input("Your postcode", placeholder="e.g. E1 4TT")
     radius = st.slider("Radius (miles)", 0.1, 2.0, 0.5, step=0.1)
     min_score = st.slider("Minimum interest score", 1, 5, 1)
+
+    with st.expander("Minimum micro-interest scores"):
+        min_disturbance = st.slider(
+            "Disturbance", 1, 5, 1, key="sub_min_disturbance"
+        )
+        min_scale = st.slider(
+            "Scale of development", 1, 5, 1, key="sub_min_scale"
+        )
+        min_housing = st.slider(
+            "Effect on housing prices", 1, 5, 1, key="sub_min_housing"
+        )
+        min_environment = st.slider(
+            "Environmental & community impact", 1, 5, 1,
+            key="sub_min_environment",
+        )
+
     consent = st.checkbox("I agree to receive weekly email updates")
 
     # Check for existing subscriptions after the main form fields
@@ -174,7 +190,11 @@ def _show_subscribe_dialog() -> None:
             for sub in existing:
                 st.markdown(
                     f"- {sub['postcode']} — {sub['radius_miles']} mi "
-                    f"radius, min score {sub['min_interest_score']}"
+                    f"radius, min score {sub['min_interest_score']}  \n"
+                    f"  Disturbance ≥ {sub.get('min_score_disturbance', 1)}, "
+                    f"Scale ≥ {sub.get('min_score_scale', 1)}, "
+                    f"Housing ≥ {sub.get('min_score_housing', 1)}, "
+                    f"Environment ≥ {sub.get('min_score_environment', 1)}"
                 )
             action = st.radio(
                 "What would you like to do?",
@@ -204,6 +224,8 @@ def _show_subscribe_dialog() -> None:
                     insert_subscriber(
                         conn, email, postcode,
                         coords[0], coords[1], radius, min_score,
+                        min_disturbance, min_scale,
+                        min_housing, min_environment,
                     )
                     st.success(
                         f"Subscribed! You'll get weekly updates for "
@@ -251,9 +273,16 @@ def _show_unsubscribe_dialog() -> None:
 
     selected_ids: list[int] = []
     for sub in subs:
+        sub_scores_text = (
+            f"Disturbance ≥ {sub.get('min_score_disturbance', 1)}, "
+            f"Scale ≥ {sub.get('min_score_scale', 1)}, "
+            f"Housing ≥ {sub.get('min_score_housing', 1)}, "
+            f"Environment ≥ {sub.get('min_score_environment', 1)}"
+        )
         label = (
             f"{sub['postcode']} — {sub['radius_miles']} mi radius, "
-            f"min score {sub['min_interest_score']}"
+            f"min score {sub['min_interest_score']} "
+            f"({sub_scores_text})"
         )
         checked = st.checkbox(
             label,
