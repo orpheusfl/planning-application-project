@@ -302,7 +302,7 @@ Extracted PDF Content:
 Return format:
 {{"{score_name}": <1-5>}}"""
 
-    def _call_llm(self, client: openai.OpenAI, system_message: str, prompt: str) -> dict:
+    def _call_llm(self, client: openai.OpenAI, system_message: str, prompt: str, label: str = "unknown") -> dict:
         """Make a single LLM API call and return the parsed JSON response.
 
         This is the isolated unit of work submitted to the thread pool.
@@ -311,6 +311,7 @@ Return format:
             client: Configured OpenAI client (thread-safe)
             system_message: System role content for the chat completion
             prompt: User role content for the chat completion
+            label: Descriptive name for this call (used in log messages)
 
         Returns:
             Parsed JSON dict from the LLM response
@@ -326,7 +327,7 @@ Return format:
         )
 
         elapsed = time.perf_counter() - start
-        logger.info("LLM call completed in %.2fs", elapsed)
+        logger.info("LLM call '%s' completed in %.2fs", label, elapsed)
 
         json_text = response.choices[0].message.content
 
@@ -489,11 +490,11 @@ Return format:
         with ThreadPoolExecutor(max_workers=MAX_PARALLEL_LLM_CALLS) as executor:
             # 1 summary/postcode call + 4 independent sub-score calls
             futures["summary"] = executor.submit(
-                self._call_llm, client, system_message, summary_prompt,
+                self._call_llm, client, system_message, summary_prompt, "summary",
             )
             for score_name, prompt in score_prompts.items():
                 futures[score_name] = executor.submit(
-                    self._call_llm, client, system_message, prompt,
+                    self._call_llm, client, system_message, prompt, score_name,
                 )
 
             # Collect results as each future completes
