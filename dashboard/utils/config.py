@@ -5,8 +5,8 @@ from pathlib import Path
 # ---------------------------------------------------------------------------
 # Brand
 # ---------------------------------------------------------------------------
-BRAND_BLUE = "#1800ad"
-BRAND_ORANGE = "#ff751f"
+BRAND_BLUE = "#165A9E"
+BRAND_ORANGE = "#F08B21"
 BRAND_WHITE = "#ffffff"
 LOGO_PATH = "openplan-logo.svg"
 
@@ -32,13 +32,29 @@ SEARCH_RESULTS_LIMIT = 10
 BOUNDARIES_DIR = Path(__file__).resolve().parent.parent / "boundaries"
 
 # ---------------------------------------------------------------------------
-# Sub-score (micro-interest) definitions
+# Sub-score (interest category) definitions
 # ---------------------------------------------------------------------------
 SUB_SCORES: list[dict[str, str]] = [
-    {"column": "score_disturbance", "label": "Level of disturbance"},
-    {"column": "score_scale", "label": "Scale of development"},
-    {"column": "score_housing", "label": "Effect on housing prices"},
-    {"column": "score_environment", "label": "Environmental & community impact"},
+    {
+        "column": "score_disturbance",
+        "label": "Level of disturbance",
+        "help": "How much noise, dust, or disruption the development may cause to nearby residents.",
+    },
+    {
+        "column": "score_scale",
+        "label": "Scale of development",
+        "help": "The size and scope of the proposed development, from minor alterations to major construction.",
+    },
+    {
+        "column": "score_housing",
+        "label": "Effect on housing prices",
+        "help": "The potential impact on local property values and housing affordability.",
+    },
+    {
+        "column": "score_environment",
+        "label": "Environmental & community impact",
+        "help": "Effects on green spaces, air quality, traffic, and community facilities.",
+    },
 ]
 
 # ---------------------------------------------------------------------------
@@ -77,11 +93,49 @@ CSS = """
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
-    html, body, [class*="css"] {
-        font-family: 'Inter', sans-serif;
+    * {
+        font-family: 'Inter', sans-serif !important;
+    }
+
+    /* Preserve Material Icons */
+    .material-symbols-rounded,
+    .material-icons,
+    [class*="icon"],
+    [data-testid="stIconMaterial"] {
+        font-family: 'Material Symbols Rounded' !important;
     }
 
     .block-container { padding-top: 1rem; }
+
+    /* Sidebar styling */
+    [data-testid="stSidebar"] {
+        background-color: #F08B21;
+    }
+
+    /* Smaller font for sidebar expander labels */
+    [data-testid="stSidebar"] [data-testid="stExpander"] summary p {
+        font-size: 13px;
+    }
+
+    /* Expander header and details background */
+    [data-testid="stSidebar"] [data-testid="stExpander"] summary {
+        background-color: #efad68 !important;
+    }
+
+    [data-testid="stSidebar"] [data-testid="stExpanderDetails"] {
+        background-color: #efad68 !important;
+    }
+
+    /* Subscribe button background */
+    [data-testid="stSidebar"] [data-testid="stBaseButton-secondary"] {
+        background-color: #efad68 !important;
+        border-color: #efad68 !important;
+    }
+
+    /* Solid green for success alerts in sidebar */
+    [data-testid="stSidebar"] [data-testid="stAlertContainer"] {
+        background-color: #D1FAE5 !important;
+    }
 
     h1, h2, h3, h4, h5, h6 {
         font-family: 'Inter', sans-serif;

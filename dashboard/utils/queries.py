@@ -41,7 +41,8 @@ APPLICATIONS_SQL = """
         a.score_environment,
         a.score_housing,
         a.application_page_url,
-        a.document_page_url
+        a.document_page_url,
+        a.decided_at
     FROM application a
     JOIN status_type st      ON a.status_type_id      = st.status_type_id
     JOIN application_type at ON a.application_type_id  = at.application_type_id
@@ -49,6 +50,18 @@ APPLICATIONS_SQL = """
     LEFT JOIN decision_type dt ON a.decision_type_id   = dt.decision_type_id
     ORDER BY a.validation_date DESC;
 """
+
+STATUS_TYPES_SQL = """
+    SELECT status_type FROM status_type ORDER BY status_type;
+"""
+
+
+@st.cache_data(ttl=3600)
+def load_status_types() -> list[str]:
+    """Load all status type names from the database."""
+    conn = get_connection()
+    df = pd.read_sql(STATUS_TYPES_SQL, conn)
+    return df["status_type"].tolist()
 
 
 @st.cache_data(ttl=300)

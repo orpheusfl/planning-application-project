@@ -79,7 +79,7 @@ def main() -> None:
     council_boundaries = load_council_boundaries(council_names)
 
     # Render interactive map with applications plotted as colour-coded markers
-    st.title("Tower Hamlets planning applications")
+    st.title("OpenPlan Interactive Dashboard")
     cluster_df = build_cluster_map_data(filtered_df)
     event = render_map(cluster_df, location_info,
                        council_boundaries, selected_council)

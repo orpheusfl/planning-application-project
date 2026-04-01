@@ -40,8 +40,9 @@ def get_users(conn: psycopg2.extensions.connection) -> pd.DataFrame:
                 """SELECT email, postcode, lat, long, radius_miles,
                           min_interest_score,
                           min_score_disturbance, min_score_scale,
-                          min_score_housing, min_score_environment
-                     FROM subscribers
+                          min_score_housing, min_score_environment,
+                          status_preferences
+                     FROM subscriber
                     WHERE unsubscribed_at IS NULL;""")
             users = cursor.fetchall()
             logging.info("Fetched %d users from the database.", len(users))
@@ -99,4 +100,32 @@ def match_applications_to_users(users_gdf: gpd.GeoDataFrame, applications_gdf: g
                 matched_df[app_col] >= matched_df[user_col]
             ]
 
+    # Filter by status preferences (comma-separated status_type names)
+    if "status_preferences" in matched_df.columns and "status" in matched_df.columns:
+        matched_df = _filter_by_status_preferences(matched_df)
+
     return matched_df
+
+
+def _filter_by_status_preferences(matched_df: pd.DataFrame) -> pd.DataFrame:
+    """Keep only rows whose application status matches the subscriber's preferences.
+
+    An empty or missing status_preferences value means 'all statuses'.
+
+    Args:
+        matched_df: DataFrame with both status and status_preferences columns
+
+    Returns:
+        Filtered DataFrame
+    """
+    keep_mask = pd.Series(True, index=matched_df.index)
+
+    for idx, row in matched_df.iterrows():
+        prefs = row.get("status_preferences", "")
+        if not prefs:
+            continue
+        allowed = [s.strip() for s in prefs.split(",")]
+        if row["status"] not in allowed:
+            keep_mask[idx] = False
+
+    return matched_df[keep_mask]
