@@ -76,13 +76,8 @@ def main() -> None:
     """Entry point for the OpenPlan dashboard."""
     st.markdown(CSS, unsafe_allow_html=True)
 
-    # Get Lambda endpoint from environment or use mock for local development
+    # Get Lambda endpoint from environment
     lambda_endpoint = os.getenv("RAG_LAMBDA_ENDPOINT", "").strip()
-    
-    if not lambda_endpoint:
-        # Use mock backend for local development
-        st.info("⚠️ Using mock chatbot backend (no Lambda endpoint configured)")
-        lambda_endpoint = None
 
     applications = load_applications()
 

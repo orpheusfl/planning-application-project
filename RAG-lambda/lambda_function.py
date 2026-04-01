@@ -130,25 +130,19 @@ def lambda_handler(event, context):
         conn = get_connection()
         response_text = None
 
-        if question_type == "application":
-            if not application_id:
-                return {
+        if question_type in ['application', 'appeal'] and not application_id:
+            return {
                     "statusCode": 400,
                     "body": json.dumps(
-                        {"error": "application_id is required for application questions"}
+                        {"error": "application_id is required for this question"}
                     ),
                 }
+
+        if question_type == "application":
             response_text, history = answer_application_question(
                 conn, application_id, user_question, history=history
             )
         elif question_type == "appeal":
-            if not application_id:
-                return {
-                    "statusCode": 400,
-                    "body": json.dumps(
-                        {"error": "application_id is required for appeal questions"}
-                    ),
-                }
             response_text, history = answer_appeal_question(
                 conn, application_id, user_question, history=history
             )

@@ -59,7 +59,6 @@ class ChatbotInterface:
                            If None, uses mock responses for local development.
         """
         self.lambda_endpoint = lambda_endpoint
-        self.use_mock = lambda_endpoint is None
         self._initialize_session_state()
 
     def _initialize_session_state(self) -> None:
@@ -93,23 +92,6 @@ class ChatbotInterface:
             st.session_state.chatbot_question_type = new_type
             st.rerun()
 
-    def _get_mock_response(self, user_question: str, question_type: str) -> str:
-        """Generate a mock response for local development testing.
-
-        Args:
-            user_question: The user's question
-            question_type: The type of question
-
-        Returns:
-            A mock response string
-        """
-        responses = {
-            "application": f"Mock response for application question: '{user_question[:50]}...' (Mock mode - no Lambda endpoint configured)",
-            "appeal": f"Mock response for appeal question: '{user_question[:50]}...' (Mock mode - no Lambda endpoint configured)",
-            "general": f"Mock response for general planning question: '{user_question[:50]}...' (Mock mode - no Lambda endpoint configured)",
-        }
-        return responses.get(question_type, "Mock response (Mock mode - no Lambda endpoint configured)")
-
     def _get_response(
         self,
         user_question: str,
@@ -127,8 +109,6 @@ class ChatbotInterface:
         question_type = st.session_state.chatbot_question_type
 
         # Use mock response if no endpoint is configured
-        if self.use_mock:
-            return self._get_mock_response(user_question, question_type)
 
         history = self._get_current_history()
 

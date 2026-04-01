@@ -34,7 +34,7 @@ def generate_application_answer(client: openai.OpenAI, application_text: str, us
                     "question and the text of a planning application. Use the information in the application text and from the planning url to answer the user's question."
                     "Use the provided application text to answer the user's question."
                     "Do not attempt to answer questions outside this scope"},
-                   {"role": "user", "content": f'Question: {user_question}, application url: {planning_url}, application text: {application_text}'}]
+                   {"role": "user", "content": f'Question: {user_question}, application url: {planning_url}, text from the application pdf: {application_text}'}]
     print(f'history - {history}')
     response = client.chat.completions.create(
         model="gpt-5-nano",
@@ -58,7 +58,7 @@ def generate_appeal_answer(client: openai.OpenAI, application_text: str, user_qu
                     "Use the provided appeal text to answer the user's question."
                     "Do not attempt to answer questions outside this scope."
                     "Ensure that all information you provide is specific to the appeal in question, and the local authority handling the appeal."},
-                   {"role": "user", "content": f'Question: {user_question}, appeal url: {planning_url}, application text: {application_text}'}]
+                   {"role": "user", "content": f'Question: {user_question}, appeal url: {planning_url}, text from the application pdf: {application_text}'}]
 
     print(f'history - {history}')
     response = client.chat.completions.create(
