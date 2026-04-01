@@ -126,7 +126,8 @@ resource "aws_ecs_task_definition" "c22-planning-pipeline-task-definition" {
         { name = "APPLICATION_FACT_TABLE", value = var.application_fact_table },
         { name = "COUNCIL_DIM_TABLE", value = var.council_dim_table },
         { name = "STATUS_DIM_TABLE", value = var.status_dim_table },
-        { name = "APPLICATION_TYPE_DIM_TABLE", value = var.application_type_dim_table }
+        { name = "APPLICATION_TYPE_DIM_TABLE", value = var.application_type_dim_table },
+        { name = "DECISION_TYPE_DIM_TABLE", value = var.decision_type_dim_table }
      
       ]
 
