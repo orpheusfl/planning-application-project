@@ -27,7 +27,11 @@ APPLICATIONS_SQL = """
         a.lat,
         a.long,
         a.validation_date   AS date,
-        st.status_type      AS status,
+        CASE
+            WHEN st.status_type = 'Decided' AND dt.decision_type IS NOT NULL
+                THEN 'Decided - ' || dt.decision_type
+            ELSE st.status_type
+        END AS status,
         at.application_type  AS application_type,
         c.council_name       AS council,
         a.ai_summary        AS summary,
@@ -42,6 +46,7 @@ APPLICATIONS_SQL = """
     JOIN status_type st      ON a.status_type_id      = st.status_type_id
     JOIN application_type at ON a.application_type_id  = at.application_type_id
     JOIN council c           ON a.council_id           = c.council_id
+    LEFT JOIN decision_type dt ON a.decision_type_id   = dt.decision_type_id
     ORDER BY a.validation_date DESC;
 """
 

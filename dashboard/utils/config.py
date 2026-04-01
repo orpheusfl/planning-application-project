@@ -66,8 +66,8 @@ DEFAULT_MARKER_COLOR = [196, 196, 196, 180]
 STATUS_CSS_CLASSES: dict[str, str] = {
     "pending": "status-pending",
     "consultation": "status-consultation",
-    "approved": "status-approved",
-    "refused": "status-refused",
+    "permit": "status-approved",
+    "refuse": "status-refused",
 }
 
 # ---------------------------------------------------------------------------
