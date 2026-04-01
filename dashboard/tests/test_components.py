@@ -269,7 +269,7 @@ class TestBuildClusterMapData:
         result = build_cluster_map_data(sample_applications)
         clusters = result[result["cluster_count"] > 1]
         for _, row in clusters.iterrows():
-            assert row["application_id"] is None
+            assert pd.isna(row["application_id"])
 
     def test_cluster_tooltip_shows_count(self, sample_applications):
         result = build_cluster_map_data(sample_applications)
