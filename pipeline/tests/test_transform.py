@@ -308,7 +308,8 @@ class TestToDict:
             'lat', 'long', 'validation_date', 'status_type', 'ai_summary',
             'public_interest_score', 'score_disturbance', 'score_scale',
             'score_housing', 'score_environment',
-            'application_page_url', 'document_page_url'
+            'application_page_url', 'document_page_url',
+            'decision_type', 'decided_at', 'database_action',
         ]
         for field in required_fields:
             assert field in result
@@ -324,6 +325,32 @@ class TestToDict:
         assert result['address'] == sample_application.address
         assert result['postcode'] == sample_application.postcode
         assert result['validation_date'] == sample_application.validation_date
+
+    def test_decision_type_and_decided_at_in_output(self, sample_application):
+        """Verify decision_type and decided_at are populated when set on the instance."""
+        sample_application.decision = "Refused"
+        sample_application.decision_date = "Mon 09 Jun 2025"
+
+        result = sample_application.to_dict()
+
+        assert result['decision_type'] == "Refused"
+        assert isinstance(result['decided_at'], datetime)
+
+    def test_decided_at_is_none_when_no_decision_date(self, sample_application):
+        """Verify decided_at is None when decision_date is not set."""
+        sample_application.decision_date = None
+
+        result = sample_application.to_dict()
+
+        assert result['decided_at'] is None
+
+    def test_database_action_in_output(self, sample_application):
+        """Verify database_action is correctly passed through to the output dict."""
+        sample_application.database_action = "Update"
+
+        result = sample_application.to_dict()
+
+        assert result['database_action'] == "Update"
 
 
 # ============================================================================

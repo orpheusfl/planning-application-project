@@ -133,6 +133,44 @@ def get_application_type_id(conn, application_type_name: str,
         raise
 
 
+def insert_decision_type(conn, decision_type_name: str,
+                         decision_type_table_name: str) -> int:
+    """Inserts a new decision type into the database and returns the new id."""
+    with conn.cursor() as cursor:
+        cursor.execute(
+            f"INSERT INTO {decision_type_table_name} (decision_type) "
+            f"VALUES (%s) RETURNING decision_type_id",
+            (decision_type_name,))
+        new_id = cursor.fetchone()[0]
+        conn.commit()
+        logging.info("Added new decision type '%s' with id %s.",
+                     decision_type_name, new_id)
+        return new_id
+
+
+def get_decision_type_id(conn, decision_type_name: str,
+                         decision_type_table_name: str) -> int | None:
+    """Retrieve decision_type_id from decision_type table.
+
+    Returns None if decision_type_name is empty or None.
+    Inserts a new row if the decision type is not found.
+    """
+    if not decision_type_name:
+        return None
+
+    with conn.cursor() as cursor:
+        cursor.execute(
+            f"SELECT decision_type_id FROM {decision_type_table_name} "
+            f"WHERE decision_type ILIKE %s", (decision_type_name,))
+        result = cursor.fetchone()
+        if result:
+            return result[0]
+
+    logging.warning("Decision type '%s' not found. Adding to database.",
+                    decision_type_name)
+    return insert_decision_type(conn, decision_type_name, decision_type_table_name)
+
+
 def load_application_to_rds(conn, table_name: str, application_data: dict,
                             foreign_keys: dict) -> int:
     """Insert application data and return generated application_id.
@@ -158,8 +196,9 @@ def load_application_to_rds(conn, table_name: str, application_data: dict,
                     score_disturbance, score_scale, score_housing,
                     score_environment,
                     council_id, status_type_id, application_type_id,
-                    application_page_url, document_page_url
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    application_page_url, document_page_url,
+                    decided_at, decision_type_id
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING application_id
             """
             cursor.execute(insert_query, (
@@ -179,7 +218,9 @@ def load_application_to_rds(conn, table_name: str, application_data: dict,
                 foreign_keys['status_type_id'],
                 foreign_keys['application_type_id'],
                 application_data['application_page_url'],
-                application_data['document_page_url']
+                application_data['document_page_url'],
+                application_data.get('decided_at'),
+                foreign_keys.get('decision_type_id')
             ))
             application_id = cursor.fetchone()[0]
             conn.commit()
@@ -198,6 +239,35 @@ def load_application_to_rds(conn, table_name: str, application_data: dict,
 # ------------------------------------------------------------
 
 
+def update_application_status(conn, table_name: str, application_data: dict,
+                              foreign_keys: dict) -> None:
+    """Update status, decided_at, and decision_type_id for an existing application.
+
+    Args:
+        conn: Database connection object
+        table_name: Name of the target table
+        application_data: Dict containing at least 'application_number' and 'decided_at'
+        foreign_keys: Dict with 'status_type_id' and optionally 'decision_type_id'
+    """
+    with conn.cursor() as cursor:
+        cursor.execute(
+            f"""UPDATE {table_name}
+                SET status_type_id = %s,
+                    decided_at = %s,
+                    decision_type_id = %s
+                WHERE application_number = %s""",
+            (
+                foreign_keys['status_type_id'],
+                application_data.get('decided_at'),
+                foreign_keys.get('decision_type_id'),
+                application_data['application_number'],
+            )
+        )
+        conn.commit()
+        logging.info("Updated application %s",
+                     application_data['application_number'])
+
+
 def validate_environment_variables():
     """ Validates that all required environment variables are set. """
     required_env_vars = [
@@ -205,7 +275,7 @@ def validate_environment_variables():
         'COUNCIL_DIM_TABLE',
         'STATUS_DIM_TABLE',
         'APPLICATION_TYPE_DIM_TABLE',
-
+        'DECISION_TYPE_DIM_TABLE',
     ]
 
     missing_env_vars = [var for var in required_env_vars
@@ -243,15 +313,45 @@ def load_application_data(conn, council_name: str,
         conn, application_info['application_type'],
         os.getenv('APPLICATION_TYPE_DIM_TABLE'))
 
+    decision_type_id = get_decision_type_id(
+        conn, application_info.get('decision_type'),
+        os.getenv('DECISION_TYPE_DIM_TABLE'))
+
     foreign_keys = {
         'council_id': council_id,
         'status_type_id': status_type_id,
-        'application_type_id': application_type_id
+        'application_type_id': application_type_id,
+        'decision_type_id': decision_type_id
     }
 
     load_application_to_rds(
         conn, os.getenv('APPLICATION_FACT_TABLE'), application_info,
         foreign_keys)
+
+
+def update_application_data(conn, council_name: str, application_info: dict) -> None:
+    """Update an existing application's status and decision fields in the database.
+
+    The application_info dict should contain: application_number, status_type,
+    decided_at, and optionally decision_type.
+    """
+    validate_environment_variables()
+
+    status_type_id = get_status_type_id(
+        conn, application_info['status_type'],
+        os.getenv('STATUS_DIM_TABLE'))
+
+    decision_type_id = get_decision_type_id(
+        conn, application_info.get('decision_type'),
+        os.getenv('DECISION_TYPE_DIM_TABLE'))
+
+    foreign_keys = {
+        'status_type_id': status_type_id,
+        'decision_type_id': decision_type_id,
+    }
+
+    update_application_status(
+        conn, os.getenv('APPLICATION_FACT_TABLE'), application_info, foreign_keys)
 
 
 if __name__ == "__main__":
