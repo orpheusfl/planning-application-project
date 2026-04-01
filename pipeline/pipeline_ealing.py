@@ -1,4 +1,4 @@
-"""Full ETL pipeline for the project.
+"""Full ETL pipeline for ealing planning applications.
 
 1. Extracts data from websites
 2. Transforms data into a clean format and calls the LLM to generate insights
@@ -10,15 +10,18 @@ import os
 
 from dotenv import load_dotenv
 
-from utilities.extract import run_scraper_current_applications, run_scraper_weekly_applications
+from utilities.extract_ealing import run_scraper_weekly_applications
 from utilities.transform import Application
-from user_notifications.generate_emails import generate_and_send_emails
 from utilities.load import get_rds_connection, load_application_data, update_application_data
 
 logger = logging.getLogger(__name__)
 
-COUNCIL_NAME = "Tower Hamlets"
+COUNCIL_NAME = "Ealing"
 MAX_APPLICATIONS_PER_RUN = 100
+
+# TEMPORARY LIMIT FOR TESTING: Set to 10 to scrape 10 validated and 10 decided applications
+# Remove this or set to None to disable the limit
+TEST_WEEKLY_APP_LIMIT = 10
 
 
 def build_db_connection(db_host: str, db_port: str, db_name: str,
@@ -33,39 +36,15 @@ def build_db_connection(db_host: str, db_port: str, db_name: str,
     )
 
 
-def deduplicate_applications(applications: list[dict]) -> list[dict]:
-    """Remove duplicate applications by application_number, keeping the last occurrence.
-
-    Later entries are preferred because the weekly decided scraper runs second
-    and provides decision data that the current scraper may lack.
-    """
-    seen: dict[str, dict] = {}
-    for app in applications:
-        app_id = app.get('application_number')
-        if app_id in seen:
-            logger.info(
-                "Duplicate found: %s — keeping weekly-scraper version", app_id)
-        seen[app_id] = app
-    return list(seen.values())
-
-
 def extract_all_applications(conn) -> list[dict]:
-    """Run both scrapers and return a deduplicated list of raw application stubs."""
-    current = run_scraper_current_applications(conn)
-    logger.info("Extracted %d current applications.", len(current))
-
-    weekly_decided = run_scraper_weekly_applications(conn)
+    """Run the weekly applications scraper and return raw application stubs."""
+    # NOTE: Using TEST_WEEKLY_APP_LIMIT for temporary testing. Set to None to disable.
+    weekly_decided = run_scraper_weekly_applications(
+        conn, app_limit=TEST_WEEKLY_APP_LIMIT)
     logger.info("Extracted %d weekly decided applications.",
                 len(weekly_decided))
 
-    combined = current + weekly_decided
-    deduplicated = deduplicate_applications(combined)
-
-    if len(combined) != len(deduplicated):
-        logger.info("Deduplicated %d → %d applications.",
-                    len(combined), len(deduplicated))
-
-    return deduplicated
+    return weekly_decided
 
 
 def build_application(raw_app: dict) -> Application:
