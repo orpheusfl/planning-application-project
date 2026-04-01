@@ -495,7 +495,7 @@ def get_weekly_decided_applications(
         return []
 
     logger.info(
-        "Found %d weeks available. Scraping validated (10 weeks) and decided (3 weeks)", len(weeks))
+        "Found %d weeks available. Scraping validated (%d weeks) and decided (%d weeks)", len(weeks), min(len(weeks), 6), min(len(weeks), 3))
 
     all_applications: List[Dict[str, str]] = []
 
