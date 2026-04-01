@@ -1,5 +1,5 @@
 """
-Extract module for the Tower Hamlets planning application scraper.
+Extract module for the Ealing planning application scraper.
 
 Handles session management, search result pagination, application detail
 parsing (summary + documents), and orchestration of the full scrape pipeline.
