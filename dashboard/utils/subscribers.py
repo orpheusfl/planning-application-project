@@ -9,7 +9,10 @@ def get_active_subscriptions(conn, email: str) -> list[dict]:
     with conn.cursor() as cur:
         cur.execute(
             """
-            SELECT subscriber_id, postcode, radius_miles, min_interest_score
+            SELECT subscriber_id, postcode, radius_miles,
+                   min_interest_score,
+                   min_score_disturbance, min_score_scale,
+                   min_score_housing, min_score_environment
               FROM subscribers
              WHERE email = %s AND unsubscribed_at IS NULL
             """,
@@ -72,17 +75,41 @@ def insert_subscriber(
     lon: float,
     radius_miles: float,
     min_interest_score: int,
+    min_score_disturbance: int = 1,
+    min_score_scale: int = 1,
+    min_score_housing: int = 1,
+    min_score_environment: int = 1,
 ) -> None:
-    """Insert a new subscription row."""
+    """Insert a new subscription row.
+
+    Args:
+        conn: Database connection
+        email: Subscriber email address
+        postcode: Subscriber postcode
+        lat: Latitude of postcode
+        lon: Longitude of postcode
+        radius_miles: Notification radius in miles
+        min_interest_score: Minimum overall interest score (1-5)
+        min_score_disturbance: Minimum disturbance sub-score (1-5)
+        min_score_scale: Minimum scale sub-score (1-5)
+        min_score_housing: Minimum housing sub-score (1-5)
+        min_score_environment: Minimum environment sub-score (1-5)
+    """
     try:
         with conn.cursor() as cur:
             cur.execute(
                 """
                 INSERT INTO subscribers
-                    (email, postcode, lat, long, radius_miles, min_interest_score)
-                VALUES (%s, %s, %s, %s, %s, %s)
+                    (email, postcode, lat, long, radius_miles,
+                     min_interest_score,
+                     min_score_disturbance, min_score_scale,
+                     min_score_housing, min_score_environment)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """,
-                (email, postcode, lat, lon, radius_miles, min_interest_score),
+                (email, postcode, lat, lon, radius_miles,
+                 min_interest_score,
+                 min_score_disturbance, min_score_scale,
+                 min_score_housing, min_score_environment),
             )
         conn.commit()
         logger.info(

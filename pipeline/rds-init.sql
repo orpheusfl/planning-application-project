@@ -30,7 +30,15 @@ CREATE TABLE IF NOT EXISTS subscriber (
     long NUMERIC(10, 7),
     radius_miles NUMERIC(2, 1) DEFAULT 0.5,
     min_interest_score INTEGER DEFAULT 1 
-        CHECK (min_interest_score BETWEEN 1 AND 10),
+        CHECK (min_interest_score BETWEEN 1 AND 5),
+    min_score_disturbance INTEGER DEFAULT 1
+        CHECK (min_score_disturbance BETWEEN 1 AND 5),
+    min_score_scale INTEGER DEFAULT 1
+        CHECK (min_score_scale BETWEEN 1 AND 5),
+    min_score_housing INTEGER DEFAULT 1
+        CHECK (min_score_housing BETWEEN 1 AND 5),
+    min_score_environment INTEGER DEFAULT 1
+        CHECK (min_score_environment BETWEEN 1 AND 5),
     subscribed_at TIMESTAMPTZ DEFAULT NOW(),
     unsubscribed_at TIMESTAMPTZ
 );

@@ -12,6 +12,7 @@ from dotenv import load_dotenv
 
 from utilities.extract import run_scraper_current_applications, run_scraper_weekly_applications
 from utilities.transform import Application
+from user_notifications.generate_emails import generate_and_send_emails
 from utilities.load import get_rds_connection, load_application_data, update_application_data
 
 logger = logging.getLogger(__name__)
@@ -191,6 +192,8 @@ def main() -> None:
     processed = process_applications(conn, raw_applications, api_key)
 
     logger.info("Pipeline complete. Processed %d applications.", len(processed))
+
+    generate_and_send_emails(processed_applications)
 
 
 if __name__ == "__main__":

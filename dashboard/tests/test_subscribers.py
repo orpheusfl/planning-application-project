@@ -22,10 +22,14 @@ class TestGetActiveSubscriptions:
             ("postcode",),
             ("radius_miles",),
             ("min_interest_score",),
+            ("min_score_disturbance",),
+            ("min_score_scale",),
+            ("min_score_housing",),
+            ("min_score_environment",),
         ]
         cursor.fetchall.return_value = [
-            (1, "E1 4TT", 0.5, 3),
-            (2, "E2 0HU", 1.0, 1),
+            (1, "E1 4TT", 0.5, 3, 2, 1, 3, 1),
+            (2, "E2 0HU", 1.0, 1, 1, 1, 1, 1),
         ]
 
         result = get_active_subscriptions(conn, "test@example.com")
@@ -36,6 +40,10 @@ class TestGetActiveSubscriptions:
             "postcode": "E1 4TT",
             "radius_miles": 0.5,
             "min_interest_score": 3,
+            "min_score_disturbance": 2,
+            "min_score_scale": 1,
+            "min_score_housing": 3,
+            "min_score_environment": 1,
         }
         assert result[1]["postcode"] == "E2 0HU"
 
@@ -46,6 +54,10 @@ class TestGetActiveSubscriptions:
             ("postcode",),
             ("radius_miles",),
             ("min_interest_score",),
+            ("min_score_disturbance",),
+            ("min_score_scale",),
+            ("min_score_housing",),
+            ("min_score_environment",),
         ]
         cursor.fetchall.return_value = []
 
@@ -59,6 +71,10 @@ class TestGetActiveSubscriptions:
             ("postcode",),
             ("radius_miles",),
             ("min_interest_score",),
+            ("min_score_disturbance",),
+            ("min_score_scale",),
+            ("min_score_housing",),
+            ("min_score_environment",),
         ]
         cursor.fetchall.return_value = []
 
@@ -104,7 +120,8 @@ class TestInsertSubscriber:
         conn, cursor = mock_db_connection
 
         insert_subscriber(
-            conn, "a@b.com", "E1 4TT", 51.51, -0.09, 0.5, 3
+            conn, "a@b.com", "E1 4TT", 51.51, -0.09, 0.5, 3,
+            2, 1, 3, 1,
         )
 
         cursor.execute.assert_called_once()
@@ -116,17 +133,20 @@ class TestInsertSubscriber:
         conn, cursor = mock_db_connection
 
         insert_subscriber(
-            conn, "a@b.com", "E1 4TT", 51.51, -0.09, 0.5, 3
+            conn, "a@b.com", "E1 4TT", 51.51, -0.09, 0.5, 3,
+            2, 1, 3, 1,
         )
 
         params = cursor.execute.call_args[0][1]
-        assert params == ("a@b.com", "E1 4TT", 51.51, -0.09, 0.5, 3)
+        assert params == ("a@b.com", "E1 4TT", 51.51, -
+                          0.09, 0.5, 3, 2, 1, 3, 1)
 
     def test_commits_after_insert(self, mock_db_connection):
         conn, cursor = mock_db_connection
 
         insert_subscriber(
-            conn, "a@b.com", "E1 4TT", 51.51, -0.09, 0.5, 3
+            conn, "a@b.com", "E1 4TT", 51.51, -0.09, 0.5, 3,
+            2, 1, 3, 1,
         )
 
         conn.commit.assert_called_once()
@@ -135,11 +155,25 @@ class TestInsertSubscriber:
         conn, cursor = mock_db_connection
 
         insert_subscriber(
-            conn, "other@mail.com", "E2 0HU", 51.53, -0.05, 2.0, 5
+            conn, "other@mail.com", "E2 0HU", 51.53, -0.05, 2.0, 5,
+            4, 3, 5, 2,
         )
 
         params = cursor.execute.call_args[0][1]
-        assert params == ("other@mail.com", "E2 0HU", 51.53, -0.05, 2.0, 5)
+        assert params == ("other@mail.com", "E2 0HU",
+                          51.53, -0.05, 2.0, 5, 4, 3, 5, 2)
+
+    def test_defaults_sub_scores_to_one(self, mock_db_connection):
+        """Sub-score minimums default to 1 when not provided."""
+        conn, cursor = mock_db_connection
+
+        insert_subscriber(
+            conn, "a@b.com", "E1 4TT", 51.51, -0.09, 0.5, 3,
+        )
+
+        params = cursor.execute.call_args[0][1]
+        assert params == ("a@b.com", "E1 4TT", 51.51, -
+                          0.09, 0.5, 3, 1, 1, 1, 1)
 
 
 class TestDeactivateSubscriptions:
