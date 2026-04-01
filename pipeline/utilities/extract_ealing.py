@@ -497,7 +497,7 @@ def get_weekly_decided_applications(
     # Loop through date types first (validated first), then weeks with appropriate limits
     for date_type in [DATE_TYPE_VALIDATED, DATE_TYPE_DECIDED]:
         if date_type == DATE_TYPE_VALIDATED:
-            week_limit = 10
+            week_limit = 6
         else:
             week_limit = 3
         weeks_to_scrape = weeks[:week_limit]
@@ -518,10 +518,7 @@ def get_weekly_decided_applications(
             def reprime_fn(w=week, dt=date_type):
                 return prime_weekly_decided_state(session, w, dt)
 
-            # TEMPORARY BLOCKER FOR TESTING: Limit to first page only
-            page_results = paginate_applications_helper(
-                session, reprime_fn, page_limit=1)
-            # END TEMPORARY BLOCKER
+            page_results = paginate_applications_helper(session, reprime_fn)
 
             all_applications.extend(page_results)
             logger.info("Added %d applications from week: %s, date_type: %s",
