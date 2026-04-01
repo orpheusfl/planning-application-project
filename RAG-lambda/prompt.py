@@ -10,7 +10,6 @@ load_dotenv()
 def generate_client() -> openai.OpenAI:
     """Generates an OpenAI client using the API key from environment variables."""
     api_key = os.getenv("OPENAI_API_KEY")
-
     if not api_key:
         raise ValueError("OPENAI_API_KEY environment variable is not set.")
     return openai.OpenAI(api_key=api_key)
@@ -34,8 +33,7 @@ def generate_application_answer(client: openai.OpenAI, application_text: str, us
         messages=history
     )
 
-    history.append(
-        {"role": "assistant", "content": response.choices[0].message.content})
+    
 
     return response.choices[0].message.content, history
 
@@ -60,8 +58,7 @@ def generate_appeal_answer(client: openai.OpenAI, application_text: str, user_qu
         messages=history
     )
 
-    history.append(
-        {"role": "assistant", "content": response.choices[0].message.content})
+    
 
     return response.choices[0].message.content, history
 
@@ -81,6 +78,5 @@ def generate_general_answer(client: openai.OpenAI, user_question: str, history=N
         model="gpt-5-nano",
         messages=history
     )
-    history.append(
-        {"role": "assistant", "content": response.choices[0].message.content})
+   
     return response.choices[0].message.content, history

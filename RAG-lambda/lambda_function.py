@@ -137,7 +137,7 @@ def lambda_handler(event, context):
                         {"error": "application_id is required for application questions"}
                     ),
                 }
-            response_text, _ = answer_application_question(
+            response_text, history = answer_application_question(
                 conn, application_id, user_question, history=history
             )
         elif question_type == "appeal":
@@ -148,17 +148,18 @@ def lambda_handler(event, context):
                         {"error": "application_id is required for appeal questions"}
                     ),
                 }
-            response_text, _ = answer_appeal_question(
+            response_text, history = answer_appeal_question(
                 conn, application_id, user_question, history=history
             )
         else:  # general
-            response_text, _ = answer_general_question(user_question, history=history)
+            response_text, history = answer_general_question(user_question, history=history)
 
         return {
             "statusCode": 200,
             "body": json.dumps({
                 "response": response_text,
                 "question_type": question_type,
+                "history": history
             }),
         }
 
