@@ -3,11 +3,13 @@ OpenPlan — Tower Hamlets Dashboard
 
 Streamlit dashboard for browsing planning applications in Tower Hamlets.
 Displays applications on an interactive map with filtering, search,
-and per-application detail views including AI summaries and documents.
+and per-application detail views including AI summaries and documents
+with an integrated chatbot for answering questions.
 """
 
 import streamlit as st
 import pandas as pd
+import os
 
 from utils.components import (
     build_cluster_map_data,
@@ -21,7 +23,11 @@ from utils.components import (
 )
 from utils.config import CSS
 from utils.queries import load_applications, load_council_boundaries
+from utils.chatbot import ChatbotInterface
 
+from dotenv import load_dotenv
+
+load_dotenv()
 # ---------------------------------------------------------------------------
 # Page config — must be the first Streamlit command
 # ---------------------------------------------------------------------------
@@ -70,6 +76,9 @@ def main() -> None:
     """Entry point for the OpenPlan dashboard."""
     st.markdown(CSS, unsafe_allow_html=True)
 
+    # Get Lambda endpoint from environment
+    lambda_endpoint = os.getenv("RAG_LAMBDA_ENDPOINT", "").strip()
+
     applications = load_applications()
 
     filtered_df, location_info, selected_council = render_sidebar(applications)
@@ -105,6 +114,12 @@ def main() -> None:
         _show_cluster_detail(filtered_df, selected_postcode)
     else:
         _show_search_results(filtered_df)
+
+    # Separate chatbot tab
+    st.divider()
+    st.title("Planning Assistant")
+    chatbot = ChatbotInterface(lambda_endpoint)
+    chatbot.render()
 
 
 if __name__ == "__main__":

@@ -45,6 +45,7 @@ docker push $FULL_IMAGE_URI
 
 # 6. Update the Lambda Function
 echo "[6/6] Updating Lambda function to use the new image..."
+echo "Loading to function $LAMBDA_NAME, uri $FULL_IMAGE_URI, region $REGION"
 aws lambda update-function-code \
     --function-name $LAMBDA_NAME \
     --image-uri $FULL_IMAGE_URI \

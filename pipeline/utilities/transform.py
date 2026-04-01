@@ -256,21 +256,21 @@ throughout the summary. For example: "The scheme includes 500 units of housing
 
 Respond ONLY with valid JSON, no additional text.
 
-Original Application Description:
-{original_description}
+                    Original Application Description:
+                    {original_description}
 
-Full Address:
-{full_address}
+                    Full Address:
+                    {full_address}
 
-Extracted PDF Content:
-{formatted_pdf_text}
+                    Extracted PDF Content:
+                    {formatted_pdf_text}
 
-Focus the summary on: proposed uses, number of units/buildings, key impacts on the
-neighborhood, affordable housing provisions, and any notable amenities or concerns.
-If there is no pdf content, summarise based on the original description.
+                    Focus the summary on: proposed uses, number of units/buildings, key impacts on the
+                    neighborhood, affordable housing provisions, and any notable amenities or concerns.
+                    If there is no pdf content, summarise based on the original description.
 
-Use UK English and be concise, but using full sentences. Avoid generic statements
-and focus on specific details that would be relevant to local residents.
+                    Use UK English and be concise, but using full sentences. Avoid generic statements
+                    and focus on specific details that would be relevant to local residents.
 
 Return format:
 {{"summary": "...", "postcode": "..."}}"""
