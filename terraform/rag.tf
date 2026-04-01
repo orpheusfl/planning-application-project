@@ -37,6 +37,14 @@ resource "aws_iam_role_policy_attachment" "lambda_basic_execution" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 }
 
+# Decode the JSON strings directly from the resources you created
+locals {
+  db_secret  = jsondecode(aws_secretsmanager_secret_version.pipeline-db-creds-version.secret_string)
+  llm_secret = jsondecode(aws_secretsmanager_secret_version.pipeline-llm-api-key-version.secret_string)
+ 
+
+}
+
 # ==========================================
 # 3. LAMBDA FUNCTION (DOCKER CONTAINER)
 # ==========================================
@@ -45,22 +53,21 @@ resource "aws_lambda_function" "rag_lambda" {
   function_name = "c22-planning-rag-lambda"
   role          = aws_iam_role.rag_lambda_role.arn
   
-  # Instructs AWS to use a Docker container instead of a .zip file
   package_type  = "Image"
   image_uri     = "${aws_ecr_repository.rag_lambda_repo.repository_url}:latest"
   
   timeout       = 60 
-  memory_size   = 1024 # Increased for heavier RAG/Vector processing
-
-  # No vpc_config block is included, giving the Lambda default 
-  # outbound internet access to reach the LLM and the public RDS.
+  memory_size   = 1024 
 
   environment {
     variables = {
-      # Injected plaintext variables for load_dotenv() to pick up
-      DB_USERNAME = var.rds_username
-      DB_PASSWORD = var.rds_password
-      LLM_API_KEY = var.llm_api_key
+      # Inject the plaintext values from the decoded locals
+      DB_USERNAME = local.db_secret.username
+      DB_PASSWORD = local.db_secret.password
+      LLM_API_KEY = local.llm_secret.api_key
+      DB_HOST     = aws_db_instance.pipeline-planning-db.address
+      DB_PORT     = var.rds_port
+      DB_NAME     = var.rds_database
     }
   }
 }
