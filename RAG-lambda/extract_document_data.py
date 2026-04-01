@@ -474,7 +474,7 @@ def extract_document_texts(
     return documents
 
 
-def get_related_documents_text(application_number: str) -> list[dict[str, str]]:
+def get_related_documents_text(conn, application_number: str) -> list[dict[str, str]]:
     """Returns extracted text from all PDFs associated with a planning application.
 
     Connects to the RDS database to look up the application's document page URL,
@@ -491,16 +491,15 @@ def get_related_documents_text(application_number: str) -> list[dict[str, str]]:
         A list of dicts, each with 'document_type' (str) and 'document_text' (str) keys.
         Returns an empty list if the application is not found or scraping fails.
     """
-    conn = get_rds_connection(
+    '''conn = get_rds_connection(
         rds_host=os.environ["DB_HOST"],
         rds_port=int(os.environ.get("DB_PORT", "5432")),
         rds_user=os.environ["DB_USER"],
         rds_password=os.environ["DB_PASSWORD"],
         rds_db_name=os.environ["DB_NAME"],
-    )
+    )'''
 
     document_page_url = get_document_page_url(conn, application_number)
-    conn.close()
 
     if not document_page_url:
         logger.error("No document URL found for application: %s",
@@ -544,11 +543,11 @@ if __name__ == "__main__":
 
     application_number = "PA/26/00515/NC"
     document_url = get_document_page_url(conn, application_number)
-    conn.close()
     print(f"Document URL for {application_number}: {document_url}")
 
-    document_text_for_application = get_related_documents_text(
+    document_text_for_application = get_related_documents_text(conn,
         application_number)
     for doc in document_text_for_application:
         print(f"Document Type: {doc['document_type']}")
         print(f"Document Text: {doc['document_text'][:500]}...")
+    conn.close()

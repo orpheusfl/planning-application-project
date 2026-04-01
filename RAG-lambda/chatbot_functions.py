@@ -8,14 +8,6 @@ from prompt import generate_client, generate_application_answer, generate_appeal
 
 load_dotenv()
 
-conn = get_rds_connection(
-    rds_host=os.getenv("RDS_HOST"),
-    rds_port=int(os.getenv("RDS_PORT")),
-    rds_user=os.getenv("RDS_USER"),
-    rds_password=os.getenv("RDS_PASSWORD"),
-    rds_db_name=os.getenv("RDS_DATABASE")
-)
-
 
 def answer_application_question(conn, application_id: str, user_question: str, application_text: str = None, application_page_url: str = None, history: list[dict] = None) -> str:
     """Answers a user's question about a planning application."""
@@ -63,7 +55,7 @@ def answer_general_question(user_question: str, history: list[dict] = None) -> s
     return answer
 
 
-def chatbot(user_question: str, question_type: str, application_id: str = None, history: list[dict] = None) -> str:
+def chatbot(conn, user_question: str, question_type: str, application_id: str = None, history: list[dict] = None) -> str:
     if question_type == "specific_application":
         return answer_application_question(conn, application_id, user_question, history=history)
     elif question_type == "appeal":
