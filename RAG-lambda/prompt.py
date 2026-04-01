@@ -9,8 +9,7 @@ load_dotenv()
 
 def generate_client() -> openai.OpenAI:
     """Generates an OpenAI client using the API key from environment variables."""
-    #api_key = os.getenv("OPENAI_API_KEY")
-    api_key='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'
+    api_key = os.getenv("OPENAI_API_KEY")
 
     if not api_key:
         raise ValueError("OPENAI_API_KEY environment variable is not set.")

@@ -36,7 +36,6 @@ def _get_credentials() -> dict:
     logging.info("Attempting to load credentials from Secrets Manager...")
     logging.info(f"SECRET_NAME: {SECRET_NAME}, AWS_REGION: {AWS_REGION}")
     try:
-        return {"engine":"postgres","password":"password","port":5432,"user":"planning_admin", "dbname":"planning_db","host":"c22-planning-pipeline-db.c57vkec7dkkx.eu-west-2.rds.amazonaws.com"}
         client = boto3.client("secretsmanager", region_name=AWS_REGION)
         response = client.get_secret_value(SecretId=SECRET_NAME)
         secret = json.loads(response["SecretString"])
