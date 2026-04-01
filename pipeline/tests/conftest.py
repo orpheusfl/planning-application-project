@@ -77,7 +77,10 @@ def sample_application(sample_raw_address, sample_validation_date,
         address=sample_raw_address,
         validation_date=sample_validation_date,
         status="Registered",
-        pdfs=sample_pdfs
+        pdfs=sample_pdfs,
+        decision="Approved",
+        decision_date="Mon 09 Jun 2025",
+        database_action="Insert",
     )
 
 

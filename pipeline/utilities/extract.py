@@ -352,9 +352,11 @@ def parse_results_page(html_content: str) -> List[Dict[str, str]]:
     """
     soup = BeautifulSoup(html_content, "html.parser")
     apps = soup.find_all("li", class_="searchresult")
+
     logger.info("Found %d search result elements on page", len(apps))
 
     page_data = [parse_search_result(app) for app in apps]
+
     for result in page_data:
         logger.debug("Extracted: %s - %s",
                      result["application_id"], result["url"])
@@ -516,11 +518,8 @@ def _reprime_weekly_list(session: requests.Session) -> bool:
     return prime_weekly_decided_state(session)
 
 
-def get_current_applications(session: requests.Session) -> List[Dict[str, str]]:
-    """
-    Paginates through the current-applications search result pages,
-    returning application stubs.
-    """
+def get_current_applications(session: requests.Session, limit: Optional[int] = 100) -> List[Dict[str, str]]:
+    """Paginates through the current-applications search result pages, returning application stubs."""
     if not acquire_session_cookie(session, url=BASE_URL):
         logger.error("Failed to acquire session cookie. Exiting.")
         return []
@@ -529,17 +528,11 @@ def get_current_applications(session: requests.Session) -> List[Dict[str, str]]:
         logger.error("Failed to prime current-list session state. Exiting.")
         return []
 
-    # page_limit = 1 remove after testing
-    return paginate_applications_helper(session, _reprime_current_list, 1)
+    return paginate_applications_helper(session, _reprime_current_list, limit)
 
 
-def get_weekly_decided_applications(
-    session: requests.Session,
-) -> List[Dict[str, str]]:
-    """
-    Paginates through the weekly decided-list search result pages,
-    returning application stubs in the same format as ``get_current_applications``.
-    """
+def get_weekly_decided_applications(session: requests.Session, limit: Optional[int] = 100) -> List[Dict[str, str]]:
+    """Paginates through the weekly decided-list, returning application stubs."""
     if not acquire_session_cookie(session, WEEKLY_LIST_SEARCH_URL):
         logger.error("Failed to acquire session cookie. Exiting.")
         return []
@@ -549,8 +542,7 @@ def get_weekly_decided_applications(
             "Failed to prime weekly decided list server state. Exiting.")
         return []
 
-    # page_limit = 1 remove after testing
-    return paginate_applications_helper(session, _reprime_weekly_list, 1)
+    return paginate_applications_helper(session, _reprime_weekly_list, limit)
 
 
 def enrich_application(
@@ -638,11 +630,11 @@ def enrich_applications(
 # Database Helpers
 # ---------------------------------------------------------------------------
 
-def get_existing_applications(conn: Any) -> Dict[str, str]:
+def get_existing_applications(conn: Any) -> Dict[str, Dict[str, str]]:
     """
     Retrieves applications already stored in the database as a dict mapping
-    ``application_number`` → ``status``, for fast lookup of both existence and
-    current status.
+    ``application_number`` → ``{"status": ..., "decision_type": ...}``,
+    for fast lookup of existence, current status, and decision.
     """
     if conn is None:
         logger.warning(
@@ -650,14 +642,21 @@ def get_existing_applications(conn: Any) -> Dict[str, str]:
         return {}
 
     with conn.cursor() as cursor:
-        cursor.execute("""SELECT application_number, s.status_type FROM application
-        JOIN status_type s ON application.status_type_id = s.status_type_id""")
-        return {row[0]: row[1] for row in cursor.fetchall()}
+        cursor.execute("""
+            SELECT a.application_number, s.status_type, d.decision_type
+            FROM application a
+            JOIN status_type s ON a.status_type_id = s.status_type_id
+            LEFT JOIN decision_type d ON a.decision_type_id = d.decision_type_id
+        """)
+        return {
+            row[0]: {"status": row[1], "decision_type": row[2]}
+            for row in cursor.fetchall()
+        }
 
 
 def filter_new_applications(
     initial_application_info: List[Dict[str, str]],
-    existing_applications: Dict[str, str],
+    existing_applications: Dict[str, Dict[str, str]],
 ) -> List[Dict[str, str]]:
     """
     Filters application info to return only new applications (not in the database).
@@ -671,44 +670,79 @@ def filter_new_applications(
         app_id = app_info["application_id"]
 
         if app_id not in existing_applications:
-            logger.debug("New application: %s", app_id)
+            logger.info("New application found: %s", app_id)
             new_apps.append({**app_info, "database_action": "insert"})
         else:
-            logger.debug("Skipping existing application: %s", app_id)
+            logger.debug(
+                "Application already exists, will check for changes: %s", app_id)
 
-    logger.info("Found %d new applications", len(new_apps))
+    logger.info("Filter new: %d new out of %d total applications",
+                len(new_apps), len(initial_application_info))
     return new_apps
+
+
+def _normalise(value: Optional[str]) -> str:
+    """Lowercase and strip a string for case-insensitive comparison."""
+    if not value:
+        return ""
+    return value.strip().lower()
+
+
+def _has_application_changed(
+    scraped_app: Dict[str, Any],
+    stored: Dict[str, str],
+) -> bool:
+    """Return True if the scraped status or decision differs from the stored values."""
+    if _normalise(scraped_app.get("status")) != _normalise(stored.get("status")):
+        return True
+    if _normalise(scraped_app.get("decision")) != _normalise(stored.get("decision_type")):
+        return True
+    return False
 
 
 def filter_changed_applications(
     enriched_apps: List[Dict[str, Any]],
-    existing_applications: Dict[str, str],
+    existing_applications: Dict[str, Dict[str, str]],
 ) -> List[Dict[str, Any]]:
     """
-    Filters enriched applications to return only those whose status has changed.
+    Filters enriched applications to return only those whose status or decision
+    has changed.
+
+    Comparisons are case-insensitive to avoid false positives from casing
+    differences between the scraper and the database.
 
     Returns a list of enriched applications annotated with ``database_action: "update"``.
-    This is called *after* enrichment so we can compare the current status with the
-    status stored in the database.
+    This is called *after* enrichment so we can compare scraped values with the
+    values stored in the database.
     """
     changed_apps = []
+    unchanged_apps = []
 
     for app in enriched_apps:
         app_id = app["application_number"]
 
-        if app_id in existing_applications:
-            if app.get("status") != existing_applications[app_id]:
-                logger.debug(
-                    "Status changed for %s: '%s' -> '%s'",
-                    app_id,
-                    existing_applications[app_id],
-                    app.get("status"),
-                )
-                changed_apps.append({**app, "database_action": "update"})
-            else:
-                logger.debug("Status unchanged for %s", app_id)
+        if app_id not in existing_applications:
+            logger.debug(
+                "Application not in database (should not happen in filter_changed): %s", app_id)
+            continue
 
-    logger.info("Found %d applications with changed status", len(changed_apps))
+        stored = existing_applications[app_id]
+
+        if not _has_application_changed(app, stored):
+            logger.debug("No changes detected for %s", app_id)
+            unchanged_apps.append(app_id)
+            continue
+
+        logger.info(
+            "Change detected for %s: status '%s' → '%s', decision '%s' → '%s'",
+            app_id,
+            stored.get("status"), app.get("status"),
+            stored.get("decision_type"), app.get("decision"),
+        )
+        changed_apps.append({**app, "database_action": "update"})
+
+    logger.info("Filter changed: %d changed, %d unchanged out of %d existing applications",
+                len(changed_apps), len(unchanged_apps), len(enriched_apps))
     return changed_apps
 
 
@@ -728,28 +762,46 @@ def _run_scraper_pipeline(
     """
     session = create_scraper_session()
     existing = get_existing_applications(conn)
+    logger.info("Database contains %d existing applications", len(existing))
 
-    logger.info("Starting scrape: for %s", label)
+    logger.info("Starting scrape for %s", label)
 
     initial_application_info = scraper_to_run(session)
+    logger.info("Scraper returned %d applications for %s",
+                len(initial_application_info), label)
 
     # Filter new applications before enrichment to avoid unnecessary work
     new_info = filter_new_applications(initial_application_info, existing)
 
     # Enrich only the new applications
-    enriched_new = enrich_applications(session, new_info)
+    if new_info:
+        logger.info("Enriching %d new applications", len(new_info))
+        enriched_new = enrich_applications(session, new_info)
+        logger.info("Enrichment complete: %d of %d new applications enriched successfully",
+                    len(enriched_new), len(new_info))
+    else:
+        enriched_new = []
+        logger.info("No new applications to enrich")
 
     # Filter changed applications: need to enrich existing apps to compare status
     existing_info = [
         s for s in initial_application_info if s["application_id"] in existing]
-    enriched_existing = enrich_applications(session, existing_info)
-    changed_apps = filter_changed_applications(enriched_existing, existing)
+    if existing_info:
+        logger.info(
+            "Enriching %d existing applications to check for changes", len(existing_info))
+        enriched_existing = enrich_applications(session, existing_info)
+        logger.info("Enrichment complete: %d of %d existing applications enriched",
+                    len(enriched_existing), len(existing_info))
+        changed_apps = filter_changed_applications(enriched_existing, existing)
+    else:
+        changed_apps = []
+        logger.info("No existing applications to check for changes")
 
     # Combine new and changed applications
     result = enriched_new + changed_apps
 
-    logger.info("Completed scrape: %s. Total to process: %d",
-                label, len(result))
+    logger.info("Completed scrape for %s: %d new, %d updated, %d total to process",
+                label, len(enriched_new), len(changed_apps), len(result))
     return result
 
 

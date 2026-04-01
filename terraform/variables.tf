@@ -64,6 +64,13 @@ variable "application_type_dim_table" {
   default = "application_type"
 }
 
+variable "decision_type_dim_table" {
+  description = "Name of the RDS table for the decision type"
+  type = string
+  default = "decision_type"
+  
+}
+
 variable "llm_api_key" {
   description = "API key for the LLM service"
   type        = string

@@ -8,3 +8,6 @@ openai
 boto3
 psycopg2-binary
 urllib3
+pandas
+geopandas
+shapely

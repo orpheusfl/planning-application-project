@@ -6,6 +6,7 @@ then routes to the appropriate chatbot function.
 
 import json
 import logging
+from dotenv import load_dotenv
 import os
 
 from dotenv import load_dotenv
