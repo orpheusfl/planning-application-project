@@ -946,7 +946,9 @@ Return format:
                           'planning statement',
                           'consultation summary',
                           'environmental report',
+                          'application form - without personal data',
                           'correspondence',
+                          'planning statement',
                           'site notice'}
 
         initial_count = len(self._raw_pdfs)

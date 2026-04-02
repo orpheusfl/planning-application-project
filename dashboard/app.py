@@ -10,6 +10,7 @@ with an integrated chatbot for answering questions.
 import streamlit as st
 import pandas as pd
 import os
+import logging
 
 from utils.components import (
     build_cluster_map_data,
@@ -26,6 +27,7 @@ from utils.queries import load_applications, load_council_boundaries
 from utils.chatbot import ChatbotInterface
 
 from dotenv import load_dotenv
+
 
 load_dotenv()
 # ---------------------------------------------------------------------------
@@ -73,11 +75,16 @@ def _show_search_results(filtered_df: pd.DataFrame) -> None:
 
 
 def main() -> None:
+    load_dotenv()
     """Entry point for the OpenPlan dashboard."""
     st.markdown(CSS, unsafe_allow_html=True)
 
     # Get Lambda endpoint from environment
     lambda_endpoint = os.getenv("RAG_LAMBDA_ENDPOINT", "").strip()
+
+    # For debugging - remove in production
+    print(f"Lambda endpoint: {lambda_endpoint}")
+    logging.info(f"Lambda endpoint: {lambda_endpoint}")
 
     applications = load_applications()
 
@@ -88,7 +95,7 @@ def main() -> None:
     council_boundaries = load_council_boundaries(council_names)
 
     # Render interactive map with applications plotted as colour-coded markers
-    st.title("Tower Hamlets planning applications")
+    st.title("OpenPlan Interactive Dashboard")
     cluster_df = build_cluster_map_data(filtered_df)
     event = render_map(cluster_df, location_info,
                        council_boundaries, selected_council)
@@ -115,11 +122,24 @@ def main() -> None:
     else:
         _show_search_results(filtered_df)
 
-    # Separate chatbot tab
-    st.divider()
-    st.title("Planning Assistant")
-    chatbot = ChatbotInterface(lambda_endpoint)
-    chatbot.render()
+    # Floating chatbot overlay
+    if "chat_open" not in st.session_state:
+        st.session_state.chat_open = False
+
+    def _toggle_chat() -> None:
+        st.session_state.chat_open = not st.session_state.chat_open
+
+    if st.session_state.chat_open:
+        with st.container(key="chat_overlay"):
+            close_col, title_col = st.columns([1, 6])
+            with close_col:
+                st.button("✕", key="chat_close", on_click=_toggle_chat)
+            with title_col:
+                st.markdown("#### 💬 Planning Assistant")
+            chatbot = ChatbotInterface(lambda_endpoint)
+            chatbot.render_in_dialog()
+
+    st.button("💬", key="chat_fab", on_click=_toggle_chat)
 
 
 if __name__ == "__main__":

@@ -11,10 +11,18 @@ load_dotenv()
 
 def answer_application_question(conn, application_id: str, user_question: str, application_text: str = None, application_page_url: str = None, history: list[dict] = None) -> str:
     """Answers a user's question about a planning application."""
+
+    logging.info(
+        f"Answering application question for application_id={application_id} with user_question='{user_question}' and history={history}")
     # Get application text and page URL
     if application_text is None:
+        logging.info(
+            f"Fetching application text for application_id={application_id}")
         application_text = get_related_documents_text(conn, application_id)
+
     if application_page_url is None:
+        logging.info(
+            f"Fetching application page URL for application_id={application_id}")
         application_page_url = get_document_page_url(conn, application_id)
 
     # Generate OpenAI client

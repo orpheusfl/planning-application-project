@@ -26,8 +26,8 @@ class TestStatusBadge:
         [
             ("Pending Decision", "status-pending"),
             ("Under Consultation", "status-consultation"),
-            ("Approved", "status-approved"),
-            ("Refused", "status-refused"),
+            ("Decided - Permit", "status-approved"),
+            ("Decided - Refuse", "status-refused"),
         ],
     )
     def test_known_statuses_map_to_correct_class(self, status, expected_class):
@@ -41,13 +41,13 @@ class TestStatusBadge:
         assert "Withdrawn" in html
 
     def test_output_is_html_span(self):
-        html = _status_badge("Approved")
+        html = _status_badge("Decided - Permit")
         assert html.startswith("<span")
         assert html.endswith("</span>")
 
     def test_case_insensitive_keyword_match(self):
-        # "APPROVED" contains "approved" when lowered
-        html = _status_badge("APPROVED")
+        # "DECIDED - PERMIT" contains "permit" when lowered
+        html = _status_badge("DECIDED - PERMIT")
         assert "status-approved" in html
 
 

@@ -62,10 +62,24 @@ class SubscriptionMatch:
     min_score_housing: int
     min_score_environment: int
     applications: list[dict]
+    status_preferences: str = ""
 
     def has_matches(self) -> bool:
         """Returns True if subscription has any matching applications."""
         return len(self.applications) > 0
+
+
+def _format_display_status(application: dict) -> str:
+    """Build the compound display status for an application.
+
+    Returns 'Decided - Permit' style when a decision exists,
+    otherwise the plain status type.
+    """
+    status = application.get("status", "")
+    decision = application.get("decision", "")
+    if status == "Decided" and decision:
+        return f"{status} - {decision}"
+    return status
 
 
 def format_application_html(application: dict) -> str:
@@ -82,6 +96,7 @@ def format_application_html(application: dict) -> str:
     score = application.get("public_interest_score", "N/A")
     postcode = application.get("postcode_right", "N/A")
     url = application.get("application_page_url", "#")
+    display_status = _format_display_status(application)
 
     disturbance = application.get("score_disturbance", "N/A")
     scale = application.get("score_scale", "N/A")
@@ -91,11 +106,12 @@ def format_application_html(application: dict) -> str:
     return f"""
     <div style="border: 1px solid #e5e7eb; padding: 16px; margin: 12px 0; border-radius: 4px;">
         <h3 style="margin: 0 0 8px 0; color: #1f2937;"><a href="{url}" target="_blank" rel="noopener noreferrer" style="color: #1800ad;">{app_id}</a></h3>
+        <p style="margin: 4px 0; color: #4b5563;"><strong>Status:</strong> {display_status}</p>
         <p style="margin: 4px 0; color: #4b5563;"><strong>Description:</strong> {description}</p>
         <p style="margin: 4px 0; color: #4b5563;"><strong>Interest Score:</strong> {score}/5</p>
         <p style="margin: 4px 0; color: #4b5563;"><strong>Location:</strong> {postcode}</p>
         <div style="margin: 8px 0 0 0; padding: 8px; background: #f3f4f6; border-radius: 4px;">
-            <p style="margin: 0 0 4px 0; font-weight: 600; color: #374151; font-size: 13px;">Micro-Interest Scores</p>
+            <p style="margin: 0 0 4px 0; font-weight: 600; color: #374151; font-size: 13px;">Interest Category Scores</p>
             <table style="width: 100%; font-size: 13px; color: #4b5563;">
                 <tr><td>Disturbance</td><td style="text-align: right; font-weight: 600;">{disturbance}/5</td></tr>
                 <tr><td>Scale of development</td><td style="text-align: right; font-weight: 600;">{scale}/5</td></tr>
@@ -124,6 +140,15 @@ def format_preferences_footer_html(subscription: SubscriptionMatch) -> str:
         f'<tr><td style="padding: 4px 0;">Search radius</td>'
         f'<td style="text-align: right; padding: 4px 0; font-weight: 600;">{subscription.radius_miles} miles from {subscription.postcode}</td></tr>'
     )
+
+    if subscription.status_preferences:
+        statuses = subscription.status_preferences.split(",")
+        status_display = ", ".join(statuses)
+        preference_rows.append(
+            f'<tr><td style="padding: 4px 0;">Status types</td>'
+            f'<td style="text-align: right; padding: 4px 0;'
+            f' font-weight: 600;">{status_display}</td></tr>'
+        )
 
     score_preferences = [
         ("Overall interest score", subscription.min_interest_score),
@@ -260,6 +285,7 @@ def group_applications_by_subscription(matched_df: pd.DataFrame) -> dict[tuple, 
         "email", "postcode", "radius_miles", "min_interest_score",
         "min_score_disturbance", "min_score_scale",
         "min_score_housing", "min_score_environment",
+        "status_preferences",
     ]
     grouped = matched_df.groupby(subscription_cols)
     subscriptions = {}
@@ -270,6 +296,7 @@ def group_applications_by_subscription(matched_df: pd.DataFrame) -> dict[tuple, 
         "score_disturbance", "score_scale",
         "score_housing", "score_environment",
         "postcode_right", "application_page_url",
+        "status", "decision",
     ]
     available_cols = [c for c in application_cols if c in matched_df.columns]
 
@@ -291,7 +318,9 @@ def create_subscription_matches(subscriptions: dict[tuple, list[dict]]) -> list[
     """
     matches = []
     for key, apps in subscriptions.items():
-        email, postcode, radius, min_int, min_dist, min_scale, min_housing, min_env = key
+        (email, postcode, radius, min_int,
+         min_dist, min_scale, min_housing, min_env,
+         status_prefs) = key
         matches.append(
             SubscriptionMatch(
                 email=email,
@@ -303,6 +332,7 @@ def create_subscription_matches(subscriptions: dict[tuple, list[dict]]) -> list[
                 min_score_housing=min_housing,
                 min_score_environment=min_env,
                 applications=apps,
+                status_preferences=status_prefs if status_prefs else "",
             )
         )
     return matches
@@ -436,6 +466,8 @@ def preview_example_email() -> None:
             "score_scale": 3,
             "score_housing": 5,
             "score_environment": 2,
+            "status": "Decided",
+            "decision": "Permit",
             "application_page_url": "https://development.towerhamlets.gov.uk/online-applications/applicationDetails.do?keyVal=DCAPR_150302&activeTab=summary",
         },
         {
@@ -447,6 +479,8 @@ def preview_example_email() -> None:
             "score_scale": 2,
             "score_housing": 4,
             "score_environment": 3,
+            "status": "Registered",
+            "decision": "",
             "application_page_url": "https://development.towerhamlets.gov.uk/online-applications/applicationDetails.do?keyVal=DCAPR_150306&activeTab=summary",
         },
         {
@@ -458,6 +492,8 @@ def preview_example_email() -> None:
             "score_scale": 5,
             "score_housing": 4,
             "score_environment": 3,
+            "status": "Decided",
+            "decision": "Refuse",
             "application_page_url": "https://development.towerhamlets.gov.uk/online-applications/applicationDetails.do?keyVal=DCAPR_150307&activeTab=summary",
         },
     ]
@@ -472,6 +508,7 @@ def preview_example_email() -> None:
         min_score_housing=3,
         min_score_environment=1,
         applications=example_applications,
+        status_preferences="Decided,Registered",
     )
 
     html_content = create_email_html(

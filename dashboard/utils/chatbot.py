@@ -9,6 +9,7 @@ Communicates with a Lambda function backend for generating responses.
 import streamlit as st
 import requests
 import json
+import time
 from typing import Optional, Any
 import logging
 import numpy as np
@@ -51,6 +52,10 @@ class ChatbotInterface:
         "General Planning": "general",
     }
 
+    # Async polling: check every N seconds, give up after MAX_ATTEMPTS checks
+    POLL_INTERVAL_SECONDS: int = 3
+    POLL_MAX_ATTEMPTS: int = 100  # 100 × 3 s = 5 minutes maximum wait
+
     def __init__(self, lambda_endpoint: Optional[str] = None):
         """Initialize the chatbot interface.
 
@@ -58,7 +63,10 @@ class ChatbotInterface:
             lambda_endpoint: The URL of the Lambda function endpoint.
                            If None, uses mock responses for local development.
         """
-        self.lambda_endpoint = lambda_endpoint
+        self.lambda_endpoint = lambda_endpoint + "/ask" if lambda_endpoint else None
+
+        self._status_base = lambda_endpoint + "/status" if lambda_endpoint else None
+
         self._initialize_session_state()
 
     def _initialize_session_state(self) -> None:
@@ -92,24 +100,80 @@ class ChatbotInterface:
             st.session_state.chatbot_question_type = new_type
             st.rerun()
 
+    def _dispatch_request(self, payload: dict) -> str:
+        """POST the question payload to /ask and return the job_id.
+
+        The Lambda dispatcher returns 202 immediately with a job_id;
+        the actual RAG work happens asynchronously on the Lambda side.
+
+        Args:
+            payload: The question payload to send to the Lambda
+
+        Returns:
+            The job_id string for use with _poll_for_result
+        """
+        response = requests.post(
+            self.lambda_endpoint,
+            json=payload,
+            timeout=30,  # 30 s is more than enough for a dispatch-only call
+        )
+        response.raise_for_status()
+        return response.json()["job_id"]
+
+    def _poll_for_result(self, job_id: str) -> str:
+        """Poll /status/{job_id} until the job completes and return the answer.
+
+        Checks every POLL_INTERVAL_SECONDS for up to POLL_MAX_ATTEMPTS attempts
+        before giving up with a timeout message.
+
+        Args:
+            job_id: The job identifier returned by _dispatch_request
+
+        Returns:
+            The response text, or an error message if the job failed / timed out
+        """
+        status_url = f"{self._status_base}/{job_id}"
+
+        for attempt in range(self.POLL_MAX_ATTEMPTS):
+            time.sleep(self.POLL_INTERVAL_SECONDS)
+
+            poll_response = requests.get(status_url, timeout=10)
+            poll_response.raise_for_status()
+            data = poll_response.json()
+
+            status = data.get("status")
+
+            if status == "complete":
+                return data.get("response", "No response from server")
+
+            if status == "error":
+                error_msg = data.get("error", "Unknown error")
+                logger.error(f"RAG job {job_id} failed: {error_msg}")
+                return f"Error processing request: {error_msg}"
+
+            logger.debug(f"Job {job_id} still pending (attempt {attempt + 1})")
+
+        return "Error: Request timed out waiting for a response. Please try again."
+
     def _get_response(
         self,
         user_question: str,
         application_id: Optional[str] = None,
     ) -> str:
-        """Get a response from the Lambda backend or mock for local development.
+        """Dispatch a question to the Lambda backend and poll for the result.
+
+        Uses an async pattern to avoid the API Gateway 29-second hard timeout:
+          1. POST to /ask  → receives a job_id immediately (202)
+          2. Poll GET /status/{job_id} until the result is ready
 
         Args:
             user_question: The user's question
             application_id: Optional application ID for specific questions
 
         Returns:
-            The response text from the Lambda function or mock response
+            The response text from the completed Lambda job
         """
         question_type = st.session_state.chatbot_question_type
-
-        # Use mock response if no endpoint is configured
-
         history = self._get_current_history()
 
         payload = {
@@ -124,37 +188,28 @@ class ChatbotInterface:
         # Convert numpy/pandas types to native Python types for JSON serialization
         payload = _convert_to_native_python(payload)
 
-        logger.info(f"Sending request to Lambda endpoint: {self.lambda_endpoint}")
-        logger.debug(f"Payload: {payload}")
+        logger.info(f"Dispatching async request to: {self.lambda_endpoint}")
 
         try:
-            response = requests.post(
-                self.lambda_endpoint,
-                json=payload,
-                timeout=120,
-            )
-            response.raise_for_status()
+            job_id = self._dispatch_request(payload)
+            logger.info(f"Job dispatched, polling for result: job_id={job_id}")
+            return self._poll_for_result(job_id)
 
-            data = response.json()
-            logger.debug(f"Response: {data}")
-            if response.status_code == 200:
-                return data.get("response", "No response from server")
-            else:
-                error_msg = data.get("error", "Unknown error")
-                return f"Error: {error_msg}"
-
+        except requests.exceptions.HTTPError as e:
+            logger.error(f"HTTP error from backend: {e}")
+            return f"Error: Backend returned {e.response.status_code}. Please try again."
         except requests.exceptions.Timeout as e:
-            logger.error(f"Lambda request timed out: {str(e)}")
+            logger.error(f"Request timed out: {e}")
             return "Error: Request timed out. Please try again."
         except requests.exceptions.ConnectionError as e:
-            logger.error(f"Could not connect to Lambda endpoint ({self.lambda_endpoint}): {str(e)}")
-            return f"Error: Could not connect to backend at {self.lambda_endpoint}. Please check the endpoint is correct."
+            logger.error(f"Could not connect to {self.lambda_endpoint}: {e}")
+            return f"Error: Could not connect to backend at {self.lambda_endpoint}."
         except requests.exceptions.RequestException as e:
-            logger.error(f"Lambda request failed: {str(e)}")
-            return f"Error: {str(e)}"
+            logger.error(f"Request failed: {e}")
+            return f"Error: {e}"
         except Exception as e:
-            logger.error(f"Unexpected error: {str(e)}", exc_info=True)
-            return f"Error: {str(e)}"
+            logger.error(f"Unexpected error: {e}", exc_info=True)
+            return f"Error: {e}"
 
     def render(self, application_id: Optional[str] = None) -> None:
         """Render the chatbot interface.
@@ -211,10 +266,86 @@ class ChatbotInterface:
             # Validate application ID for application/appeal questions
             if current_question_type in ["application", "appeal"]:
                 if not application_id:
-                    st.error("Please enter an Application ID for this question type.")
+                    st.error(
+                        "Please enter an Application ID for this question type.")
                     return
 
             history = self._get_current_history()
+
+            with st.spinner("Getting response..."):
+                response = self._get_response(user_input, application_id)
+
+            history.append({"role": "user", "content": user_input})
+            history.append({"role": "assistant", "content": response})
+            self._set_current_history(history)
+            st.rerun()
+
+    def render_in_dialog(self, application_id: Optional[str] = None) -> None:
+        """Render the chatbot inside a dialog popup.
+
+        Uses st.text_input + button instead of st.chat_input
+        since chat_input is not supported inside st.dialog.
+
+        Args:
+            application_id: Optional default application ID
+        """
+        selected_label = next(
+            label
+            for label, key in self.QUESTION_TYPES.items()
+            if key == st.session_state.chatbot_question_type
+        )
+        st.selectbox(
+            "Question Nature",
+            options=list(self.QUESTION_TYPES.keys()),
+            index=list(self.QUESTION_TYPES.keys()).index(selected_label),
+            on_change=lambda: self._handle_question_type_change(
+                self.QUESTION_TYPES[st.session_state.temp_question_type_dlg]
+            ),
+            key="temp_question_type_dlg",
+        )
+
+        current_question_type = st.session_state.chatbot_question_type
+        if current_question_type in ["application", "appeal"]:
+            input_app_id = st.text_input(
+                "Application ID",
+                value=str(application_id) if application_id else "",
+                placeholder="Enter application ID",
+                key="chatbot_app_id_dlg",
+            )
+            application_id = input_app_id if input_app_id else None
+
+        # Chat history
+        history = self._get_current_history()
+        chat_container = st.container(height=200)
+        with chat_container:
+            for message in history:
+                with st.chat_message(message["role"]):
+                    st.markdown(message["content"])
+
+        # Input — form allows Enter to submit
+        with st.form("chat_form", clear_on_submit=True, enter_to_submit=True):
+            user_input = st.text_input(
+                "Message",
+                placeholder="Ask a question...",
+                key="chatbot_dialog_input",
+                label_visibility="collapsed",
+            )
+            send_col, clear_col, spacer = st.columns([2, 3, 2])
+            with send_col:
+                submitted = st.form_submit_button(
+                    "Send", use_container_width=True)
+            with clear_col:
+                clear_clicked = st.form_submit_button(
+                    "Clear History", use_container_width=True)
+
+        if clear_clicked:
+            self._set_current_history([])
+            st.rerun()
+
+        if submitted and user_input:
+            if current_question_type in ["application", "appeal"] and not application_id:
+                st.error("Please enter an Application ID.")
+                return
 
             with st.spinner("Getting response..."):
                 response = self._get_response(user_input, application_id)

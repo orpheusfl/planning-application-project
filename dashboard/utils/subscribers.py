@@ -12,8 +12,9 @@ def get_active_subscriptions(conn, email: str) -> list[dict]:
             SELECT subscriber_id, postcode, radius_miles,
                    min_interest_score,
                    min_score_disturbance, min_score_scale,
-                   min_score_housing, min_score_environment
-              FROM subscribers
+                   min_score_housing, min_score_environment,
+                   status_preferences
+              FROM subscriber
              WHERE email = %s AND unsubscribed_at IS NULL
             """,
             (email,),
@@ -28,7 +29,7 @@ def deactivate_all_subscriptions(conn, email: str) -> None:
         with conn.cursor() as cur:
             cur.execute(
                 """
-                UPDATE subscribers
+                UPDATE subscriber
                    SET unsubscribed_at = NOW()
                  WHERE email = %s AND unsubscribed_at IS NULL
                 """,
@@ -50,7 +51,7 @@ def deactivate_subscriptions(conn, subscriber_ids: list[int]) -> None:
         with conn.cursor() as cur:
             cur.execute(
                 """
-                UPDATE subscribers
+                UPDATE subscriber
                    SET unsubscribed_at = NOW()
                  WHERE subscriber_id = ANY(%s)
                    AND unsubscribed_at IS NULL
@@ -79,6 +80,7 @@ def insert_subscriber(
     min_score_scale: int = 1,
     min_score_housing: int = 1,
     min_score_environment: int = 1,
+    status_preferences: str = "",
 ) -> None:
     """Insert a new subscription row.
 
@@ -94,22 +96,25 @@ def insert_subscriber(
         min_score_scale: Minimum scale sub-score (1-5)
         min_score_housing: Minimum housing sub-score (1-5)
         min_score_environment: Minimum environment sub-score (1-5)
+        status_preferences: Comma-separated status types to receive
     """
     try:
         with conn.cursor() as cur:
             cur.execute(
                 """
-                INSERT INTO subscribers
+                INSERT INTO subscriber
                     (email, postcode, lat, long, radius_miles,
                      min_interest_score,
                      min_score_disturbance, min_score_scale,
-                     min_score_housing, min_score_environment)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                     min_score_housing, min_score_environment,
+                     status_preferences)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """,
                 (email, postcode, lat, lon, radius_miles,
                  min_interest_score,
                  min_score_disturbance, min_score_scale,
-                 min_score_housing, min_score_environment),
+                 min_score_housing, min_score_environment,
+                 status_preferences),
             )
         conn.commit()
         logger.info(

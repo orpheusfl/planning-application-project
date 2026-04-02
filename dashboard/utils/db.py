@@ -44,7 +44,7 @@ def _get_credentials() -> dict:
             "port": secret.get("port", 5432),
             "dbname": secret["dbname"],
             "user": secret["username"],
-            "password": secret["password"],
+            "password": secret["password"]
         }
     except Exception as exc:
         logging.info(
@@ -55,6 +55,7 @@ def _get_credentials() -> dict:
             "dbname": os.getenv("DB_NAME"),
             "user": os.getenv("DB_USER"),
             "password": os.getenv("DB_PASSWORD"),
+            "rag_lambda_endpoint": os.getenv("RAG_LAMBDA_ENDPOINT", "").strip(),
         }
 
 
