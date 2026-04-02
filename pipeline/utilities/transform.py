@@ -873,15 +873,16 @@ Return format:
                           'planning statement',
                           'consultation summary',
                           'environmental report',
-                          '	Application Form - Without Personal Data',
-                          'Correspondence',
-                          'Planning statement',
-                          'Site notice'}
+                          'application form - without personal data',
+                          'correspondence',
+                          'planning statement',
+                          'site notice'}
 
         initial_count = len(self._raw_pdfs)
 
         filtered_pdfs = [
-            pdf for pdf in self._raw_pdfs if pdf['document_type'].lower() in relevant_types]
+            pdf for pdf in self._raw_pdfs if pdf['document_type'].lower().strip() in relevant_types]
+
         final_count = len(filtered_pdfs)
 
         if initial_count > 0:

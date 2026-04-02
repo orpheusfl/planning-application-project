@@ -323,6 +323,35 @@ def parse_pdf_links_from_html(html_content: str, page_url: str) -> list[dict[str
     return pdf_documents
 
 
+def filter_relevant_documents(documents: list[dict[str, str]]) -> list[dict[str, str]]:
+    """Filters the list of documents to include only those relevant for RAG indexing.
+
+    This is based on the document type, which is expected to be in the 'document_type' key.
+
+    Args:
+        documents: List of dicts with 'pdf_url' and 'document_type' keys.
+
+    Returns:
+        A filtered list of dicts containing only relevant documents.
+    """
+    relevant_types = {'application form',
+                      'design and access statement',
+                      'planning statement',
+                      'consultation summary',
+                      'environmental report',
+                      'application form - without personal data',
+                      'correspondence',
+                      'planning statement',
+                      'site notice'}
+
+    filtered_docs = [
+        doc for doc in documents
+        if doc['document_type'].lower().strip() in relevant_types
+    ]
+
+    return filtered_docs
+
+
 def get_pdf_links_from_page(session: requests.Session, url: str) -> list[dict[str, str]]:
     """Fetches an application's documents page and extracts all PDF links.
 
@@ -343,7 +372,16 @@ def get_pdf_links_from_page(session: requests.Session, url: str) -> list[dict[st
         logger.error("Server error on documents page: %s", url)
         return []
 
-    return parse_pdf_links_from_html(html_content, url)
+    documents = parse_pdf_links_from_html(html_content, url)
+
+    logger.info("Extracted %d documents before filtering", len(documents))
+
+    relevant_documents = filter_relevant_documents(documents)
+
+    logger.info("Filtered down to %d relevant documents for RAG",
+                len(relevant_documents))
+
+    return relevant_documents
 
 
 # -----------------------------------------------------
@@ -546,7 +584,7 @@ if __name__ == "__main__":
     print(f"Document URL for {application_number}: {document_url}")
 
     document_text_for_application = get_related_documents_text(conn,
-        application_number)
+                                                               application_number)
     for doc in document_text_for_application:
         print(f"Document Type: {doc['document_type']}")
         print(f"Document Text: {doc['document_text'][:500]}...")

@@ -10,6 +10,7 @@ with an integrated chatbot for answering questions.
 import streamlit as st
 import pandas as pd
 import os
+import logging
 
 from utils.components import (
     build_cluster_map_data,
@@ -26,6 +27,7 @@ from utils.queries import load_applications, load_council_boundaries
 from utils.chatbot import ChatbotInterface
 
 from dotenv import load_dotenv
+
 
 load_dotenv()
 # ---------------------------------------------------------------------------
@@ -73,11 +75,16 @@ def _show_search_results(filtered_df: pd.DataFrame) -> None:
 
 
 def main() -> None:
+    load_dotenv()
     """Entry point for the OpenPlan dashboard."""
     st.markdown(CSS, unsafe_allow_html=True)
 
     # Get Lambda endpoint from environment
     lambda_endpoint = os.getenv("RAG_LAMBDA_ENDPOINT", "").strip()
+
+    # For debugging - remove in production
+    print(f"Lambda endpoint: {lambda_endpoint}")
+    logging.info(f"Lambda endpoint: {lambda_endpoint}")
 
     applications = load_applications()
 
