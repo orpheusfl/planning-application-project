@@ -43,25 +43,36 @@ def get_rds_connection(rds_host: str, rds_port: int, rds_user: str,
 # ------------------------------------------------------------
 
 
+def insert_council(conn, council_name: str, council_table_name: str) -> int:
+    """Inserts a new council into the database and returns the new id."""
+    with conn.cursor() as cursor:
+        cursor.execute(
+            f"INSERT INTO {council_table_name} (council_name) "
+            f"VALUES (%s) RETURNING council_id",
+            (council_name,))
+        new_id = cursor.fetchone()[0]
+        conn.commit()
+        logging.info("Added new council '%s' with id %s.",
+                     council_name, new_id)
+        return new_id
+
+
 def get_council_id(conn, council_name: str, council_table_name: str) -> int:
-    """ Retrieves the council_id from councils table based on council_name. """
-    try:
-        with conn.cursor() as cursor:
-            cursor.execute(
-                f"SELECT council_id FROM {council_table_name} "
-                f"WHERE council_name ILIKE %s", (council_name,))
-            result = cursor.fetchone()
-            if result:
-                return result[0]
-            logging.error("Council name '%s' not found in database.",
-                          council_name)
-            raise ValueError(
-                f"Council name '{council_name}' not found in database.")
-    except ValueError:
-        raise
-    except Exception as e:
-        logging.error("Error retrieving council_id: %s", e)
-        raise
+    """Retrieves the council_id from councils table based on council_name.
+
+    If council is not found, inserts it and returns the new id.
+    """
+    with conn.cursor() as cursor:
+        cursor.execute(
+            f"SELECT council_id FROM {council_table_name} "
+            f"WHERE council_name ILIKE %s", (council_name,))
+        result = cursor.fetchone()
+        if result:
+            return result[0]
+
+    logging.warning(
+        "Council '%s' not found. Adding to database.", council_name)
+    return insert_council(conn, council_name, council_table_name)
 
 
 def get_status_type_id(conn, status_name: str,
@@ -154,7 +165,7 @@ def insert_decision_type(conn, decision_type_name: str,
                 f"INSERT INTO {decision_type_table_name} (decision_type) "
                 f"VALUES (%s) RETURNING decision_type_id",
                 (decision_type_name,))
-        new_id = cursor.fetchone()[0]
+            new_id = cursor.fetchone()[0]
         conn.commit()
         logging.info("Added new decision type '%s' with id %s.",
                      decision_type_name, new_id)

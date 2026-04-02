@@ -469,10 +469,15 @@ def paginate_applications_helper(
 
 def get_weekly_decided_applications(
     session: requests.Session,
+    app_limit: Optional[int] = None,
 ) -> List[Dict[str, str]]:
     """
     Paginates through the weekly list search result pages for both decided and validated applications,
     scraping all available weeks, returning application stubs.
+
+    Args:
+        session: Requests session for HTTP calls
+        app_limit: Optional limit on total applications to return per date type. Set to 10 for testing.
     """
     if not acquire_session_cookie(session, WEEKLY_LIST_SEARCH_URL):
         logger.error("Failed to acquire session cookie. Exiting.")
@@ -490,7 +495,7 @@ def get_weekly_decided_applications(
         return []
 
     logger.info(
-        "Found %d weeks available. Scraping validated (10 weeks) and decided (3 weeks)", len(weeks))
+        "Found %d weeks available. Scraping validated (%d weeks) and decided (%d weeks)", len(weeks), min(len(weeks), 6), min(len(weeks), 3))
 
     all_applications: List[Dict[str, str]] = []
 
@@ -502,10 +507,18 @@ def get_weekly_decided_applications(
             week_limit = 3
         weeks_to_scrape = weeks[:week_limit]
 
+        date_type_apps: List[Dict[str, str]] = []
+
         logger.info("Scraping %s applications from %d weeks",
                     date_type, len(weeks_to_scrape))
 
         for week in weeks_to_scrape:
+            # Stop if we've reached the limit for this date type
+            if app_limit and len(date_type_apps) >= app_limit:
+                logger.info(
+                    "Reached app_limit of %d for %s. Stopping.", app_limit, date_type)
+                break
+
             logger.info("Scraping week: %s, date_type: %s", week, date_type)
 
             if not prime_weekly_decided_state(session, week, date_type):
@@ -520,9 +533,15 @@ def get_weekly_decided_applications(
 
             page_results = paginate_applications_helper(session, reprime_fn)
 
+            # If app_limit is set, truncate results to not exceed limit for this date type
+            if app_limit:
+                remaining = app_limit - len(date_type_apps)
+                page_results = page_results[:remaining]
+
+            date_type_apps.extend(page_results)
             all_applications.extend(page_results)
-            logger.info("Added %d applications from week: %s, date_type: %s",
-                        len(page_results), week, date_type)
+            logger.info("Added %d applications from week: %s, date_type: %s. Total for %s: %d",
+                        len(page_results), week, date_type, date_type, len(date_type_apps))
 
     logger.info("Total applications scraped: %d", len(all_applications))
     return all_applications
@@ -737,22 +756,46 @@ def _run_scraper_pipeline(
     conn: Any,
     scraper_to_run,
     label: str,
+    scraper_kwargs: dict = None,
+    enrich: bool = True,
 ) -> List[Dict[str, Any]]:
+    """Shared pipeline: create session → fetch stubs → filter new (pre-enrichment)
+    → optionally enrich new → optionally filter changed (post-enrichment) → return applications.
+
+    Args:
+        scraper_kwargs: Optional dict of keyword arguments to pass to scraper_to_run()
+        enrich: If False, returns unenriched stubs with database_action annotation for later processing
     """
-    Shared pipeline: create session → fetch stubs → filter new (pre-enrichment)
-    → enrich new → filter changed (post-enrichment) → return applications that
-    need inserting or updating.
-    """
+    if scraper_kwargs is None:
+        scraper_kwargs = {}
+
     session = create_scraper_session()
     existing = get_existing_applications(conn)
     logger.info("Database contains %d existing applications", len(existing))
 
     logger.info("Starting scrape for %s", label)
 
-    initial_application_info = scraper_to_run(session)
+    initial_application_info = scraper_to_run(session, **scraper_kwargs)
     logger.info("Scraper returned %d applications for %s",
                 len(initial_application_info), label)
 
+    if not enrich:
+        logger.info(
+            "Enrich=False: Returning unenriched stubs for later batch processing")
+        # Annotate with database_action but don't enrich
+        new_info = filter_new_applications(initial_application_info, existing)
+        existing_info = [
+            s for s in initial_application_info if s["application_id"] in existing]
+
+        for app in existing_info:
+            app['database_action'] = 'check_for_changes'
+
+        result = new_info + existing_info
+        logger.info("Completed scrape for %s: %d new (unenriched), %d existing (unenriched), %d total",
+                    label, len(new_info), len(existing_info), len(result))
+        return result
+
+    # Original enrichment flow (for backward compatibility)
     # Filter new applications before enrichment to avoid unnecessary work
     new_info = filter_new_applications(initial_application_info, existing)
 
@@ -788,14 +831,27 @@ def _run_scraper_pipeline(
     return result
 
 
-def run_scraper_weekly_applications(conn: Any) -> List[Dict[str, Any]]:
-    """Runs the scraper pipeline for weekly decided applications."""
+def run_scraper_weekly_applications(conn: Any, app_limit: Optional[int] = None, enrich: bool = True) -> List[Dict[str, Any]]:
+    """Runs the scraper pipeline for weekly decided applications.
+
+    Args:
+        app_limit: Optional limit on applications per date type (validated/decided).
+                   Useful for testing.
+        enrich: If False, returns unenriched stubs for batch processing by caller.
+    """
 
     logger.info("Starting scrape: weekly decided applications")
+    scraper_kwargs = {}
+    if app_limit is not None:
+        scraper_kwargs['app_limit'] = app_limit
+        logger.info("Using app_limit: %d applications per date type", app_limit)
+
     return _run_scraper_pipeline(
         conn,
         scraper_to_run=get_weekly_decided_applications,
         label="weekly applications",
+        scraper_kwargs=scraper_kwargs,
+        enrich=enrich,
     )
 
 

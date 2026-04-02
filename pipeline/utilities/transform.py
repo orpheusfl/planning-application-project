@@ -20,6 +20,8 @@ from dotenv import load_dotenv
 
 from selenium.webdriver import Chrome
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
+from selenium.common.exceptions import TimeoutException, WebDriverException
 
 from utilities.extract import extract_csrf_token
 from utilities.config import LLM_MODEL, MAX_PARALLEL_LLM_CALLS, SUB_SCORE_RUBRICS
@@ -563,17 +565,56 @@ Return format:
 
         Returns:
             Tuple of (cookies list, csrf_token string or None)
-        """
 
+        Raises:
+            WebDriverException: If ChromeDriver cannot be initialized after retries
+        """
         options = Options()
         options.add_argument("--headless")
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-dev-shm-usage")
         options.add_argument("--disable-gpu")
+        # Set timeout for page load
+        options.set_capability("timeouts", {
+            "implicit": 30000,  # 30 second implicit wait
+            "pageLoad": 60000   # 60 second page load timeout
+        })
 
-        driver = Chrome(options=options)
+        driver = None
+        max_retries = 3
+        retry_delay = 2
+
+        for attempt in range(max_retries):
+            try:
+                logger.info(
+                    "Initializing ChromeDriver (attempt %d/%d)...", attempt + 1, max_retries)
+                driver = Chrome(options=options)
+                logger.info("ChromeDriver initialized successfully")
+                break
+            except (TimeoutException, WebDriverException) as e:
+                logger.warning(
+                    "ChromeDriver initialization failed (attempt %d/%d): %s",
+                    attempt + 1, max_retries, str(e)[:100]
+                )
+                if attempt < max_retries - 1:
+                    time.sleep(retry_delay)
+                else:
+                    logger.error(
+                        "Failed to initialize ChromeDriver after %d attempts. "
+                        "Ensure ChromeDriver is installed and accessible.",
+                        max_retries
+                    )
+                    raise WebDriverException(
+                        f"ChromeDriver failed to initialize after {max_retries} attempts. "
+                        "Check that Chrome/Chromium and chromedriver are properly installed."
+                    ) from e
+
+        if driver is None:
+            raise WebDriverException("ChromeDriver initialization failed")
 
         try:
+            logger.info("Navigating to %s...", url)
+            driver.set_page_load_timeout(60)  # 60 second page load timeout
             driver.get(url)
             time.sleep(10)  # Wait longer for authentication to complete
             logger.info("Authenticated session established with browser")
@@ -603,7 +644,8 @@ Return format:
                 )
             return cookies, csrf_token
         finally:
-            driver.quit()
+            if driver:
+                driver.quit()
 
     def _build_session_from_cookies(
             self,
@@ -650,10 +692,28 @@ Return format:
 
         Returns:
             Authenticated requests.Session with cookies and CSRF token from browser
+
+        Raises:
+            WebDriverException: If ChromeDriver cannot be initialized or authentication fails
         """
         url = self.document_page_url or 'https://development.towerhamlets.gov.uk/'
-        cookies, csrf_token = self._get_browser_cookies(url)
-        return self._build_session_from_cookies(cookies, csrf_token)
+        try:
+            logger.info(
+                "Starting authenticated session creation for URL: %s", url)
+            cookies, csrf_token = self._get_browser_cookies(url)
+            logger.info(
+                "Successfully obtained cookies and CSRF token from browser")
+            return self._build_session_from_cookies(cookies, csrf_token)
+        except WebDriverException as e:
+            logger.error(
+                "Failed to create authenticated session: %s\n"
+                "TROUBLESHOOTING:\n"
+                "1. Verify Chrome/Chromium is installed: brew install --cask chromium\n"
+                "2. Verify chromedriver is installed: brew install chromedriver\n"
+                "3. Verify chromedriver version matches Chrome version\n"
+                "4. Try running: chromedriver --version", str(e)
+            )
+            raise
 
     def _perform_pdf_download(self, session: requests.Session, url: str) -> Path:
         """Perform the actual PDF download and save to disk.
@@ -863,6 +923,19 @@ Return format:
         finally:
             self._cleanup_temp_files()
 
+    def _is_relevant_document_type(self, document_type: str, relevant_types: set[str]) -> bool:
+        """Check if document type contains any relevant type string.
+
+        Args:
+            document_type: The document type to check
+            relevant_types: Set of relevant type keywords to match against
+
+        Returns:
+            True if any relevant type is contained in the document type (case-insensitive)
+        """
+        doc_type_lower = document_type.lower()
+        return any(relevant_type in doc_type_lower for relevant_type in relevant_types)
+
     def _filter_pdfs_for_relevance(self):
         """Filter PDFs to include only those most relevant for resident-focused summary.
         Prints out the number of PDFs before and after filtering, and logs the percentage kept.
@@ -881,8 +954,9 @@ Return format:
         initial_count = len(self._raw_pdfs)
 
         filtered_pdfs = [
-            pdf for pdf in self._raw_pdfs if pdf['document_type'].lower().strip() in relevant_types]
-
+            pdf for pdf in self._raw_pdfs
+            if self._is_relevant_document_type(pdf['document_type'], relevant_types)
+        ]
         final_count = len(filtered_pdfs)
 
         if initial_count > 0:
@@ -896,12 +970,12 @@ Return format:
         removed_types = {
             pdf['document_type']
             for pdf in self._raw_pdfs
-            if pdf['document_type'].lower() not in relevant_types
+            if not self._is_relevant_document_type(pdf['document_type'], relevant_types)
         }
         kept_types = {
             pdf['document_type']
             for pdf in self._raw_pdfs
-            if pdf['document_type'].lower() in relevant_types
+            if self._is_relevant_document_type(pdf['document_type'], relevant_types)
         }
 
         if removed_types:

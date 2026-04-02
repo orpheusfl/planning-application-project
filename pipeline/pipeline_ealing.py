@@ -1,4 +1,4 @@
-"""Full ETL pipeline for the project.
+"""Full ETL pipeline for ealing planning applications.
 
 1. Extracts data from websites
 2. Transforms data into a clean format and calls the LLM to generate insights
@@ -10,15 +10,19 @@ import os
 
 from dotenv import load_dotenv
 
-from utilities.extract import run_scraper_current_applications, run_scraper_weekly_applications
+from utilities.extract_ealing import run_scraper_weekly_applications
 from utilities.transform import Application
-from user_notifications.generate_emails import generate_and_send_emails
 from utilities.load import get_rds_connection, load_application_data, update_application_data
 
 logger = logging.getLogger(__name__)
 
-COUNCIL_NAME = "Tower Hamlets"
+COUNCIL_NAME = "Ealing"
 MAX_APPLICATIONS_PER_RUN = 100
+CHUNK_SIZE = 50
+
+# TEMPORARY: Blocker for testing PDF filtering with limited applications
+TEST_MODE_ENABLED = True
+TEST_APP_LIMIT_PER_DATE_TYPE = 10  # 10 validated + 10 decided
 
 
 def build_db_connection(db_host: str, db_port: str, db_name: str,
@@ -33,39 +37,19 @@ def build_db_connection(db_host: str, db_port: str, db_name: str,
     )
 
 
-def deduplicate_applications(applications: list[dict]) -> list[dict]:
-    """Remove duplicate applications by application_number, keeping the last occurrence.
-
-    Later entries are preferred because the weekly decided scraper runs second
-    and provides decision data that the current scraper may lack.
-    """
-    seen: dict[str, dict] = {}
-    for app in applications:
-        app_id = app.get('application_number')
-        if app_id in seen:
-            logger.info(
-                "Duplicate found: %s — keeping weekly-scraper version", app_id)
-        seen[app_id] = app
-    return list(seen.values())
-
-
 def extract_all_applications(conn) -> list[dict]:
-    """Run both scrapers and return a deduplicated list of raw application stubs."""
-    current = run_scraper_current_applications(conn)
-    logger.info("Extracted %d current applications.", len(current))
+    """Run the weekly applications scraper and return raw application stubs."""
+    app_limit = TEST_APP_LIMIT_PER_DATE_TYPE if TEST_MODE_ENABLED else None
+    if app_limit:
+        logger.warning(
+            "TEST MODE ENABLED: Limiting to %d per date type (validated/decided)", app_limit)
 
-    weekly_decided = run_scraper_weekly_applications(conn)
-    logger.info("Extracted %d weekly decided applications.",
+    weekly_decided = run_scraper_weekly_applications(
+        conn, app_limit=app_limit, enrich=False)
+    logger.info("Extracted %d weekly decided application stubs.",
                 len(weekly_decided))
 
-    combined = current + weekly_decided
-    deduplicated = deduplicate_applications(combined)
-
-    if len(combined) != len(deduplicated):
-        logger.info("Deduplicated %d → %d applications.",
-                    len(combined), len(deduplicated))
-
-    return deduplicated
+    return weekly_decided
 
 
 def build_application(raw_app: dict) -> Application:
@@ -137,34 +121,59 @@ def process_application(conn, raw_app: dict, api_key: str) -> dict | None:
             return None
 
 
-def process_applications(conn, raw_applications: list[dict], api_key: str) -> list[dict]:
-    """Process each raw application up to the per-run limit.
+def process_applications_in_chunks(conn, raw_applications: list[dict], api_key: str) -> list[dict]:
+    """Process applications in chunks of 50 to balance memory usage and LLM throughput.
+
+    Loops through all applications, enriching and processing chunks sequentially.
+    Each application is either inserted (new) or updated (existing) as determined by its database_action.
 
     Returns a list of successfully processed application dicts.
     """
+    from utilities.extract_ealing import enrich_applications, create_scraper_session
+
     processed = []
     skipped = []
+    total_to_process = len(raw_applications)
 
-    for raw_app in raw_applications:
-        result = process_application(conn, raw_app, api_key)
+    logger.info("Processing %d applications in chunks of %d",
+                total_to_process, CHUNK_SIZE)
 
-        if result is not None:
-            processed.append(result)
-        else:
-            app_id = raw_app.get('application_number', 'Unknown')
-            skipped.append(app_id)
+    for i in range(0, len(raw_applications), CHUNK_SIZE):
+        chunk = raw_applications[i:i + CHUNK_SIZE]
+        chunk_num = (i // CHUNK_SIZE) + 1
+        total_chunks = (len(raw_applications) + CHUNK_SIZE - 1) // CHUNK_SIZE
+
+        logger.info("Processing chunk %d/%d (%d apps)",
+                    chunk_num, total_chunks, len(chunk))
+
+        # Enrich chunk
+        session = create_scraper_session()
+        enriched_chunk = enrich_applications(session, chunk)
+        session.close()
+
+        # Process each enriched application
+        for enriched_app in enriched_chunk:
+            result = process_application(conn, enriched_app, api_key)
+            if result is not None:
+                processed.append(result)
+            else:
+                skipped.append(enriched_app.get(
+                    'application_number', 'unknown'))
+
+            if len(processed) >= MAX_APPLICATIONS_PER_RUN:
+                logger.info(
+                    "Reached MAX_APPLICATIONS_PER_RUN limit (%d)", MAX_APPLICATIONS_PER_RUN)
+                break
 
         if len(processed) >= MAX_APPLICATIONS_PER_RUN:
-            logger.info("Reached the per-run limit of %d applications.",
-                        MAX_APPLICATIONS_PER_RUN)
             break
 
     if skipped:
         logger.warning("Skipped %d applications: %s",
                        len(skipped), ", ".join(skipped))
 
-    logger.info("Processing complete: %d processed, %d skipped",
-                len(processed), len(skipped))
+    logger.info("Processing complete: %d processed, %d skipped out of %d total",
+                len(processed), len(skipped), total_to_process)
     return processed
 
 
@@ -185,11 +194,11 @@ def main() -> None:
 
     conn = build_db_connection(db_host, db_port, db_name, db_user, db_password)
 
-    # Scrapes for all applications data
+    # Extract all application stubs (quick extraction without detailed enrichment)
     raw_applications = extract_all_applications(conn)
 
-    # Processes each application and loads insights into the database
-    processed = process_applications(conn, raw_applications, api_key)
+    # Process applications in chunks of 50 (enriching and loading as we go)
+    processed = process_applications_in_chunks(conn, raw_applications, api_key)
 
     logger.info("Pipeline complete. Processed %d applications.", len(processed))
 
