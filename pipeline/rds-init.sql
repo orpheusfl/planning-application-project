@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS subscriber (
         CHECK (min_score_housing BETWEEN 1 AND 5),
     min_score_environment INTEGER DEFAULT 1
         CHECK (min_score_environment BETWEEN 1 AND 5),
+    status_preferences TEXT DEFAULT '',
     subscribed_at TIMESTAMPTZ DEFAULT NOW(),
     unsubscribed_at TIMESTAMPTZ
 );

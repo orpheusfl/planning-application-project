@@ -124,7 +124,8 @@ class ChatbotInterface:
         # Convert numpy/pandas types to native Python types for JSON serialization
         payload = _convert_to_native_python(payload)
 
-        logger.info(f"Sending request to Lambda endpoint: {self.lambda_endpoint}")
+        logger.info(
+            f"Sending request to Lambda endpoint: {self.lambda_endpoint}")
         logger.debug(f"Payload: {payload}")
 
         try:
@@ -147,7 +148,8 @@ class ChatbotInterface:
             logger.error(f"Lambda request timed out: {str(e)}")
             return "Error: Request timed out. Please try again."
         except requests.exceptions.ConnectionError as e:
-            logger.error(f"Could not connect to Lambda endpoint ({self.lambda_endpoint}): {str(e)}")
+            logger.error(
+                f"Could not connect to Lambda endpoint ({self.lambda_endpoint}): {str(e)}")
             return f"Error: Could not connect to backend at {self.lambda_endpoint}. Please check the endpoint is correct."
         except requests.exceptions.RequestException as e:
             logger.error(f"Lambda request failed: {str(e)}")
@@ -211,10 +213,86 @@ class ChatbotInterface:
             # Validate application ID for application/appeal questions
             if current_question_type in ["application", "appeal"]:
                 if not application_id:
-                    st.error("Please enter an Application ID for this question type.")
+                    st.error(
+                        "Please enter an Application ID for this question type.")
                     return
 
             history = self._get_current_history()
+
+            with st.spinner("Getting response..."):
+                response = self._get_response(user_input, application_id)
+
+            history.append({"role": "user", "content": user_input})
+            history.append({"role": "assistant", "content": response})
+            self._set_current_history(history)
+            st.rerun()
+
+    def render_in_dialog(self, application_id: Optional[str] = None) -> None:
+        """Render the chatbot inside a dialog popup.
+
+        Uses st.text_input + button instead of st.chat_input
+        since chat_input is not supported inside st.dialog.
+
+        Args:
+            application_id: Optional default application ID
+        """
+        selected_label = next(
+            label
+            for label, key in self.QUESTION_TYPES.items()
+            if key == st.session_state.chatbot_question_type
+        )
+        st.selectbox(
+            "Question Nature",
+            options=list(self.QUESTION_TYPES.keys()),
+            index=list(self.QUESTION_TYPES.keys()).index(selected_label),
+            on_change=lambda: self._handle_question_type_change(
+                self.QUESTION_TYPES[st.session_state.temp_question_type_dlg]
+            ),
+            key="temp_question_type_dlg",
+        )
+
+        current_question_type = st.session_state.chatbot_question_type
+        if current_question_type in ["application", "appeal"]:
+            input_app_id = st.text_input(
+                "Application ID",
+                value=str(application_id) if application_id else "",
+                placeholder="Enter application ID",
+                key="chatbot_app_id_dlg",
+            )
+            application_id = input_app_id if input_app_id else None
+
+        # Chat history
+        history = self._get_current_history()
+        chat_container = st.container(height=200)
+        with chat_container:
+            for message in history:
+                with st.chat_message(message["role"]):
+                    st.markdown(message["content"])
+
+        # Input — form allows Enter to submit
+        with st.form("chat_form", clear_on_submit=True, enter_to_submit=True):
+            user_input = st.text_input(
+                "Message",
+                placeholder="Ask a question...",
+                key="chatbot_dialog_input",
+                label_visibility="collapsed",
+            )
+            send_col, clear_col, spacer = st.columns([2, 3, 2])
+            with send_col:
+                submitted = st.form_submit_button(
+                    "Send", use_container_width=True)
+            with clear_col:
+                clear_clicked = st.form_submit_button(
+                    "Clear History", use_container_width=True)
+
+        if clear_clicked:
+            self._set_current_history([])
+            st.rerun()
+
+        if submitted and user_input:
+            if current_question_type in ["application", "appeal"] and not application_id:
+                st.error("Please enter an Application ID.")
+                return
 
             with st.spinner("Getting response..."):
                 response = self._get_response(user_input, application_id)

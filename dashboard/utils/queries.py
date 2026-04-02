@@ -27,7 +27,11 @@ APPLICATIONS_SQL = """
         a.lat,
         a.long,
         a.validation_date   AS date,
-        st.status_type      AS status,
+        CASE
+            WHEN st.status_type = 'Decided' AND dt.decision_type IS NOT NULL
+                THEN 'Decided - ' || dt.decision_type
+            ELSE st.status_type
+        END AS status,
         at.application_type  AS application_type,
         c.council_name       AS council,
         a.ai_summary        AS summary,
@@ -37,13 +41,27 @@ APPLICATIONS_SQL = """
         a.score_environment,
         a.score_housing,
         a.application_page_url,
-        a.document_page_url
+        a.document_page_url,
+        a.decided_at
     FROM application a
     JOIN status_type st      ON a.status_type_id      = st.status_type_id
     JOIN application_type at ON a.application_type_id  = at.application_type_id
     JOIN council c           ON a.council_id           = c.council_id
+    LEFT JOIN decision_type dt ON a.decision_type_id   = dt.decision_type_id
     ORDER BY a.validation_date DESC;
 """
+
+STATUS_TYPES_SQL = """
+    SELECT status_type FROM status_type ORDER BY status_type;
+"""
+
+
+@st.cache_data(ttl=3600)
+def load_status_types() -> list[str]:
+    """Load all status type names from the database."""
+    conn = get_connection()
+    df = pd.read_sql(STATUS_TYPES_SQL, conn)
+    return df["status_type"].tolist()
 
 
 @st.cache_data(ttl=300)
@@ -61,19 +79,24 @@ def load_applications() -> pd.DataFrame:
 
 @st.cache_data(ttl=3600)
 def load_council_boundaries(council_names: list[str]) -> dict[str, dict]:
-    """Load GeoJSON boundary files for the given council names.
+    """Load GeoJSON boundary files for all available councils.
 
-    Looks for ``boundaries/<council_name>.geojson`` on disk.
-    Councils without a matching file are silently skipped.
+    Loads boundaries for councils that appear in the data *and* any
+    additional boundary files found on disk (e.g. councils expected
+    to provide data soon).
 
     Args:
-        council_names: List of council names to load boundaries for
+        council_names: List of council names present in the data
 
     Returns:
         Mapping of council name to parsed GeoJSON dict
     """
+    all_names = set(council_names)
+    for path in BOUNDARIES_DIR.glob("*.geojson"):
+        all_names.add(path.stem)
+
     boundaries: dict[str, dict] = {}
-    for name in council_names:
+    for name in sorted(all_names):
         path = BOUNDARIES_DIR / f"{name}.geojson"
         if not path.exists():
             continue

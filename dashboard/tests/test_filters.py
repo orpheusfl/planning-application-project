@@ -62,9 +62,9 @@ class TestByStatus:
         assert len(result) == len(sample_applications)
 
     def test_specific_status_filters(self, sample_applications):
-        result = by_status(sample_applications, "Approved")
+        result = by_status(sample_applications, "Decided - Permit")
         assert len(result) == 1
-        assert all(result["status"] == "Approved")
+        assert all(result["status"] == "Decided - Permit")
 
     def test_pending_decision_returns_two(self, sample_applications):
         result = by_status(sample_applications, "Pending Decision")

@@ -5,8 +5,8 @@ from pathlib import Path
 # ---------------------------------------------------------------------------
 # Brand
 # ---------------------------------------------------------------------------
-BRAND_BLUE = "#1800ad"
-BRAND_ORANGE = "#ff751f"
+BRAND_BLUE = "#165A9E"
+BRAND_ORANGE = "#F08B21"
 BRAND_WHITE = "#ffffff"
 LOGO_PATH = "openplan-logo.svg"
 
@@ -32,13 +32,29 @@ SEARCH_RESULTS_LIMIT = 10
 BOUNDARIES_DIR = Path(__file__).resolve().parent.parent / "boundaries"
 
 # ---------------------------------------------------------------------------
-# Sub-score (micro-interest) definitions
+# Sub-score (interest category) definitions
 # ---------------------------------------------------------------------------
 SUB_SCORES: list[dict[str, str]] = [
-    {"column": "score_disturbance", "label": "Level of disturbance"},
-    {"column": "score_scale", "label": "Scale of development"},
-    {"column": "score_housing", "label": "Effect on housing prices"},
-    {"column": "score_environment", "label": "Environmental & community impact"},
+    {
+        "column": "score_disturbance",
+        "label": "Level of disturbance",
+        "help": "How much noise, dust, or disruption the development may cause to nearby residents.",
+    },
+    {
+        "column": "score_scale",
+        "label": "Scale of development",
+        "help": "The size and scope of the proposed development, from minor alterations to major construction.",
+    },
+    {
+        "column": "score_housing",
+        "label": "Effect on housing prices",
+        "help": "The potential impact on local property values and housing affordability.",
+    },
+    {
+        "column": "score_environment",
+        "label": "Environmental & community impact",
+        "help": "Effects on green spaces, air quality, traffic, and community facilities.",
+    },
 ]
 
 # ---------------------------------------------------------------------------
@@ -66,8 +82,8 @@ DEFAULT_MARKER_COLOR = [196, 196, 196, 180]
 STATUS_CSS_CLASSES: dict[str, str] = {
     "pending": "status-pending",
     "consultation": "status-consultation",
-    "approved": "status-approved",
-    "refused": "status-refused",
+    "permit": "status-approved",
+    "refuse": "status-refused",
 }
 
 # ---------------------------------------------------------------------------
@@ -77,11 +93,49 @@ CSS = """
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
-    html, body, [class*="css"] {
-        font-family: 'Inter', sans-serif;
+    * {
+        font-family: 'Inter', sans-serif !important;
+    }
+
+    /* Preserve Material Icons */
+    .material-symbols-rounded,
+    .material-icons,
+    [class*="icon"],
+    [data-testid="stIconMaterial"] {
+        font-family: 'Material Symbols Rounded' !important;
     }
 
     .block-container { padding-top: 1rem; }
+
+    /* Sidebar styling */
+    [data-testid="stSidebar"] {
+        background-color: #F08B21;
+    }
+
+    /* Smaller font for sidebar expander labels */
+    [data-testid="stSidebar"] [data-testid="stExpander"] summary p {
+        font-size: 13px;
+    }
+
+    /* Expander header and details background */
+    [data-testid="stSidebar"] [data-testid="stExpander"] summary {
+        background-color: #efad68 !important;
+    }
+
+    [data-testid="stSidebar"] [data-testid="stExpanderDetails"] {
+        background-color: #efad68 !important;
+    }
+
+    /* Subscribe button background */
+    [data-testid="stSidebar"] [data-testid="stBaseButton-secondary"] {
+        background-color: #efad68 !important;
+        border-color: #efad68 !important;
+    }
+
+    /* Solid green for success alerts in sidebar */
+    [data-testid="stSidebar"] [data-testid="stAlertContainer"] {
+        background-color: #D1FAE5 !important;
+    }
 
     h1, h2, h3, h4, h5, h6 {
         font-family: 'Inter', sans-serif;
@@ -122,6 +176,66 @@ CSS = """
         font-family: 'Inter', sans-serif;
         font-size: 11px; color: #6B7280;
         text-transform: uppercase; letter-spacing: 0.5px;
+    }
+
+    /* Floating chat button */
+    .st-key-chat_fab {
+        position: fixed;
+        bottom: 2rem;
+        right: 2rem;
+        z-index: 999;
+    }
+    .st-key-chat_fab button {
+        border-radius: 50% !important;
+        width: 56px !important;
+        height: 56px !important;
+        padding: 0 !important;
+        font-size: 24px !important;
+        background-color: #165A9E !important;
+        color: white !important;
+        border: none !important;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.25) !important;
+        cursor: pointer;
+    }
+    .st-key-chat_fab button:hover {
+        background-color: #0e4a82 !important;
+        box-shadow: 0 6px 16px rgba(0,0,0,0.35) !important;
+    }
+
+    /* Floating chat overlay panel */
+    .st-key-chat_overlay {
+        position: fixed;
+        bottom: 6rem;
+        right: 2rem;
+        z-index: 998;
+        width: 420px;
+        max-height: 70vh;
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 8px 30px rgba(0,0,0,0.2);
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+    }
+    .st-key-chat_overlay > div {
+        padding: 0.5rem 0.75rem;
+    }
+    .st-key-chat_overlay .stSelectbox,
+    .st-key-chat_overlay .stTextInput {
+        margin-bottom: 0.25rem;
+    }
+    .st-key-chat_overlay [data-testid="stVerticalBlock"] {
+        gap: 0.4rem;
+    }
+    .st-key-chat_overlay [data-testid="stChatMessage"] p {
+        font-size: 13px !important;
+    }
+    .st-key-chat_overlay .stFormSubmitButton button,
+    .st-key-chat_overlay .st-key-chat_clear button {
+        font-size: 12px !important;
+        padding: 0.2rem 0.5rem !important;
+        min-height: 0 !important;
+        height: auto !important;
     }
 </style>
 """

@@ -26,10 +26,11 @@ class TestGetActiveSubscriptions:
             ("min_score_scale",),
             ("min_score_housing",),
             ("min_score_environment",),
+            ("status_preferences",),
         ]
         cursor.fetchall.return_value = [
-            (1, "E1 4TT", 0.5, 3, 2, 1, 3, 1),
-            (2, "E2 0HU", 1.0, 1, 1, 1, 1, 1),
+            (1, "E1 4TT", 0.5, 3, 2, 1, 3, 1, "Decided,Registered"),
+            (2, "E2 0HU", 1.0, 1, 1, 1, 1, 1, ""),
         ]
 
         result = get_active_subscriptions(conn, "test@example.com")
@@ -44,6 +45,7 @@ class TestGetActiveSubscriptions:
             "min_score_scale": 1,
             "min_score_housing": 3,
             "min_score_environment": 1,
+            "status_preferences": "Decided,Registered",
         }
         assert result[1]["postcode"] == "E2 0HU"
 
@@ -58,6 +60,7 @@ class TestGetActiveSubscriptions:
             ("min_score_scale",),
             ("min_score_housing",),
             ("min_score_environment",),
+            ("status_preferences",),
         ]
         cursor.fetchall.return_value = []
 
@@ -75,6 +78,7 @@ class TestGetActiveSubscriptions:
             ("min_score_scale",),
             ("min_score_housing",),
             ("min_score_environment",),
+            ("status_preferences",),
         ]
         cursor.fetchall.return_value = []
 
@@ -95,7 +99,7 @@ class TestDeactivateAllSubscriptions:
         cursor.execute.assert_called_once()
         sql = cursor.execute.call_args[0][0]
         assert "UPDATE" in sql.upper()
-        assert "subscribers" in sql
+        assert "subscriber" in sql
 
     def test_passes_email_parameter(self, mock_db_connection):
         conn, cursor = mock_db_connection
@@ -127,19 +131,20 @@ class TestInsertSubscriber:
         cursor.execute.assert_called_once()
         sql = cursor.execute.call_args[0][0]
         assert "INSERT" in sql.upper()
-        assert "subscribers" in sql
+        assert "subscriber" in sql
 
     def test_passes_all_parameters(self, mock_db_connection):
         conn, cursor = mock_db_connection
 
         insert_subscriber(
             conn, "a@b.com", "E1 4TT", 51.51, -0.09, 0.5, 3,
-            2, 1, 3, 1,
+            2, 1, 3, 1, "Decided,Registered",
         )
 
         params = cursor.execute.call_args[0][1]
         assert params == ("a@b.com", "E1 4TT", 51.51, -
-                          0.09, 0.5, 3, 2, 1, 3, 1)
+                          0.09, 0.5, 3, 2, 1, 3, 1,
+                          "Decided,Registered")
 
     def test_commits_after_insert(self, mock_db_connection):
         conn, cursor = mock_db_connection
@@ -156,12 +161,13 @@ class TestInsertSubscriber:
 
         insert_subscriber(
             conn, "other@mail.com", "E2 0HU", 51.53, -0.05, 2.0, 5,
-            4, 3, 5, 2,
+            4, 3, 5, 2, "Decided",
         )
 
         params = cursor.execute.call_args[0][1]
         assert params == ("other@mail.com", "E2 0HU",
-                          51.53, -0.05, 2.0, 5, 4, 3, 5, 2)
+                          51.53, -0.05, 2.0, 5, 4, 3, 5, 2,
+                          "Decided")
 
     def test_defaults_sub_scores_to_one(self, mock_db_connection):
         """Sub-score minimums default to 1 when not provided."""
@@ -173,7 +179,7 @@ class TestInsertSubscriber:
 
         params = cursor.execute.call_args[0][1]
         assert params == ("a@b.com", "E1 4TT", 51.51, -
-                          0.09, 0.5, 3, 1, 1, 1, 1)
+                          0.09, 0.5, 3, 1, 1, 1, 1, "")
 
 
 class TestDeactivateSubscriptions:
@@ -187,7 +193,7 @@ class TestDeactivateSubscriptions:
         cursor.execute.assert_called_once()
         sql = cursor.execute.call_args[0][0]
         assert "UPDATE" in sql.upper()
-        assert "subscribers" in sql
+        assert "subscriber" in sql
 
     def test_passes_subscriber_ids_as_parameter(self, mock_db_connection):
         conn, cursor = mock_db_connection

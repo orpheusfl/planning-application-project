@@ -28,6 +28,7 @@ from .config import (
 )
 from .db import get_connection
 from .geo import generate_circle_polygon, geocode_postcode, geojson_bounds
+from .queries import load_status_types
 from .subscribers import (
     deactivate_all_subscriptions,
     deactivate_subscriptions,
@@ -141,11 +142,11 @@ def _toggle_all_unsubscribe_checkboxes(subscriber_ids: list[int]) -> None:
 # ---------------------------------------------------------------------------
 # Subscribe dialog
 # ---------------------------------------------------------------------------
-@st.dialog("Subscribe to weekly updates")
+@st.dialog("Subscribe to email updates")
 def _show_subscribe_dialog() -> None:
-    """Modal form for subscribing to weekly planning application alerts."""
+    """Modal form for subscribing to email planning application alerts."""
     st.markdown(
-        "Get a weekly email with new planning applications "
+        "Get an email with new planning applications "
         "matching your preferences."
     )
 
@@ -154,7 +155,7 @@ def _show_subscribe_dialog() -> None:
     radius = st.slider("Radius (miles)", 0.1, 2.0, 0.5, step=0.1)
     min_score = st.slider("Minimum interest score", 1, 5, 1)
 
-    with st.expander("Minimum micro-interest scores"):
+    with st.expander("Minimum interest category scores"):
         min_disturbance = st.slider(
             "Disturbance", 1, 5, 1, key="sub_min_disturbance"
         )
@@ -169,7 +170,21 @@ def _show_subscribe_dialog() -> None:
             key="sub_min_environment",
         )
 
-    consent = st.checkbox("I agree to receive weekly email updates")
+    with st.expander("Application status preferences"):
+        st.caption("Select which statuses you want to be notified about.")
+        all_status_types = load_status_types()
+        selected_statuses: list[str] = []
+        for status_type in all_status_types:
+            checked = st.checkbox(
+                status_type,
+                value=True,
+                key=f"sub_status_{status_type}",
+            )
+            if checked:
+                selected_statuses.append(status_type)
+        status_preferences = ",".join(selected_statuses)
+
+    consent = st.checkbox("I agree to receive email updates")
 
     # Check for existing subscriptions after the main form fields
     action: str | None = None
@@ -188,13 +203,16 @@ def _show_subscribe_dialog() -> None:
             st.markdown("---")
             st.markdown("**Your active subscriptions:**")
             for sub in existing:
+                status_prefs = sub.get("status_preferences", "")
+                status_text = status_prefs if status_prefs else "All"
                 st.markdown(
                     f"- {sub['postcode']} — {sub['radius_miles']} mi "
                     f"radius, min score {sub['min_interest_score']}  \n"
                     f"  Disturbance ≥ {sub.get('min_score_disturbance', 1)}, "
                     f"Scale ≥ {sub.get('min_score_scale', 1)}, "
                     f"Housing ≥ {sub.get('min_score_housing', 1)}, "
-                    f"Environment ≥ {sub.get('min_score_environment', 1)}"
+                    f"Environment ≥ {sub.get('min_score_environment', 1)}  \n"
+                    f"  Statuses: {status_text}"
                 )
             action = st.radio(
                 "What would you like to do?",
@@ -226,6 +244,7 @@ def _show_subscribe_dialog() -> None:
                         coords[0], coords[1], radius, min_score,
                         min_disturbance, min_scale,
                         min_housing, min_environment,
+                        status_preferences,
                     )
                     st.success(
                         f"Subscribed! You'll get weekly updates for "
@@ -279,10 +298,12 @@ def _show_unsubscribe_dialog() -> None:
             f"Housing ≥ {sub.get('min_score_housing', 1)}, "
             f"Environment ≥ {sub.get('min_score_environment', 1)}"
         )
+        status_prefs = sub.get("status_preferences", "")
+        status_text = status_prefs if status_prefs else "All"
         label = (
             f"{sub['postcode']} — {sub['radius_miles']} mi radius, "
             f"min score {sub['min_interest_score']} "
-            f"({sub_scores_text})"
+            f"({sub_scores_text}) | Statuses: {status_text}"
         )
         checked = st.checkbox(
             label,
@@ -323,8 +344,7 @@ def render_sidebar(
     *selected_council* is the council name chosen in the sidebar, or ``None``
     when only one council exists (auto-selected).
     """
-    # st.sidebar.image(LOGO_PATH, width=220)
-    st.sidebar.caption("Tower Hamlets planning applications")
+    st.sidebar.image(LOGO_PATH, width=220)
 
     df = applications.copy()
     location_info = None
@@ -351,7 +371,7 @@ def render_sidebar(
     # Date range
     min_timestamp = df["date"].min()
     max_timestamp = df["date"].max()
-    
+
     # Handle NaT (Not a Time) values
     if pd.isna(min_timestamp) or pd.isna(max_timestamp):
         # Use default date range if no valid dates
@@ -366,9 +386,9 @@ def render_sidebar(
             default_start = (datetime.now() - timedelta(days=30)).date()
         else:
             default_start = min_date
-    
+
     date_range = st.sidebar.date_input(
-        "Filter by date",
+        "Filter by validation date",
         value=(default_start, max_date),
         min_value=min_date,
         max_value=max_date,
@@ -384,18 +404,18 @@ def render_sidebar(
     # Interest score
     min_score = st.sidebar.slider(
         "Minimum interest score", 1, 5, 1,
-        help="The interest score is the average of the four micro-interest "
-             "scores: Disturbance, Scale, Housing, and Environment. "
-             "Use this to filter out applications below a certain "
-             "overall interest level.",
+        help="The interest score is the average of the four interest category "
+             "scores: Disturbance, Scale, Housing, and Environment. ",
     )
     df = filters.by_min_score(df, min_score)
 
-    # Micro-interest sub-scores
-    with st.sidebar.expander("Filter by micro-interests"):
+    # Interest category sub-scores
+    with st.sidebar.expander("Filter by interest categories"):
         for sub in SUB_SCORES:
             min_sub = st.slider(
-                sub["label"], 1, 5, 1, key=f"sub_{sub['column']}"
+                sub["label"], 1, 5, 1,
+                key=f"sub_{sub['column']}",
+                help=sub["help"],
             )
             if min_sub > 1:
                 df = filters.by_min_sub_score(df, sub["column"], min_sub)
@@ -425,7 +445,7 @@ def render_sidebar(
 
     st.sidebar.markdown("---")
     if st.sidebar.button(
-        "📬 Subscribe to weekly updates", use_container_width=True
+        "📬 Subscribe to email updates", use_container_width=True
     ):
         _show_subscribe_dialog()
 
@@ -478,10 +498,15 @@ def render_map(
             is_selected = council_name == selected_council
             # Selected: nearly invisible fill but full-opacity border
             # Unselected: subtle fill with softer border
-            fill_color = [24, 0, 173, 8] if is_selected else [24, 0, 173, 40]
-            line_color = [24, 0, 173, 255] if is_selected else [
-                24, 0, 173, 160]
+            fill_color = [22, 90, 158, 8] if is_selected else [22, 90, 158, 40]
+            line_color = [22, 90, 158, 255] if is_selected else [
+                22, 90, 158, 160]
             line_width = 3 if is_selected else 1
+
+            # Inject council name into feature properties for tooltip
+            for feature in geojson.get("features", []):
+                feature.setdefault("properties", {})
+                feature["properties"]["tooltip_text"] = council_name
 
             layers.append(
                 pdk.Layer(
@@ -496,7 +521,7 @@ def render_map(
                     pickable=not is_selected,
                     auto_highlight=not is_selected,
                     highlight_color=[0, 0, 0, 0] if is_selected else [
-                        24, 0, 173, 40],
+                        22, 90, 158, 40],
                 )
             )
 
@@ -811,26 +836,37 @@ def render_detail(application: pd.Series) -> None:
     # Header row
     col_info, col_status, col_score = st.columns([3, 1, 1])
     with col_info:
-        st.subheader(application["application_number"])
+        st.markdown(
+            f"<h2 style='margin: 0; padding: 0;'>"
+            f"{application['application_number']}</h2>",
+            unsafe_allow_html=True,
+        )
         st.caption(application["address"])
     with col_status:
+        st.markdown("<div style='padding-top: 8px;'></div>",
+                    unsafe_allow_html=True)
         st.markdown(
             f"**Status** {_status_badge(application['status'])}",
             unsafe_allow_html=True,
         )
-        if application["application_page_url"]:
-            st.markdown(
-                f"[View on council website ↗]({application['application_page_url']})"
-            )
     with col_score:
+        st.markdown("<div style='padding-top: 8px;'></div>",
+                    unsafe_allow_html=True)
         score = application['public_interest_score']
         st.markdown(
             f"**Interest Score** {_score_pill(score, f'{int(score)}/5')}",
             unsafe_allow_html=True,
         )
 
-    # Date
-    st.markdown(f"**Date:** {application['date'].strftime('%d %B %Y')}")
+    # Dates
+    st.markdown(
+        f"**Validation date:** {application['date'].strftime('%d %B %Y')}"
+    )
+    if pd.notna(application.get("decided_at")):
+        decided_at = pd.to_datetime(application["decided_at"])
+        st.markdown(
+            f"**Decision date:** {decided_at.strftime('%d %B %Y')}"
+        )
 
     # Sub-score breakdown
     has_sub_scores = any(
@@ -852,11 +888,15 @@ def render_detail(application: pd.Series) -> None:
     else:
         st.warning("No AI summary available for this application.")
 
-    # Application documents
-    st.markdown("#### Documents")
+    # Links
+    st.markdown("#### Links")
+    if application["application_page_url"]:
+        st.markdown(
+            f"[View on council website ↗]({application['application_page_url']})"
+        )
     if application["document_page_url"]:
         st.markdown(
             f"[View application documents ↗]({application['document_page_url']})"
         )
-    else:
-        st.caption("No document link available.")
+    if not application["application_page_url"] and not application["document_page_url"]:
+        st.caption("No links available.")
