@@ -62,14 +62,62 @@ resource "aws_lambda_function" "rag_lambda" {
   environment {
     variables = {
       # Inject the plaintext values from the decoded locals
-      DB_USERNAME = local.db_secret.username
-      DB_PASSWORD = local.db_secret.password
-      LLM_API_KEY = local.llm_secret.api_key
-      DB_HOST     = aws_db_instance.pipeline-planning-db.address
-      DB_PORT     = var.rds_port
-      DB_NAME     = var.rds_database
+      DB_USERNAME    = local.db_secret.username
+      DB_PASSWORD    = local.db_secret.password
+      LLM_API_KEY    = local.llm_secret.api_key
+      DB_HOST        = aws_db_instance.pipeline-planning-db.address
+      DB_PORT        = var.rds_port
+      DB_NAME        = var.rds_database
+      # Async job tracking: table name and self-invocation function name
+      DYNAMODB_TABLE = aws_dynamodb_table.rag_jobs.name
+      FUNCTION_NAME  = "c22-planning-rag-lambda"
     }
   }
+}
+
+# ==========================================
+# 3a. DYNAMODB TABLE FOR ASYNC JOB RESULTS
+# ==========================================
+
+# Stores pending/complete/error job records so the dashboard can poll them.
+# Records are automatically expired after 1 hour via the ttl attribute.
+resource "aws_dynamodb_table" "rag_jobs" {
+  name         = "c22-planning-rag-jobs"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "job_id"
+
+  attribute {
+    name = "job_id"
+    type = "S"
+  }
+
+  ttl {
+    attribute_name = "ttl"
+    enabled        = true
+  }
+}
+
+# Grants the Lambda permission to read/write the jobs table and invoke itself.
+resource "aws_iam_role_policy" "rag_lambda_async_policy" {
+  name = "c22-planning-rag-async-policy"
+  role = aws_iam_role.rag_lambda_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["dynamodb:PutItem", "dynamodb:GetItem", "dynamodb:UpdateItem"]
+        Resource = aws_dynamodb_table.rag_jobs.arn
+      },
+      {
+        # Allows the Lambda dispatcher to invoke itself asynchronously as a worker
+        Effect   = "Allow"
+        Action   = ["lambda:InvokeFunction"]
+        Resource = aws_lambda_function.rag_lambda.arn
+      }
+    ]
+  })
 }
 
 # ==========================================
@@ -101,6 +149,13 @@ resource "aws_apigatewayv2_integration" "rag_api_integration" {
 resource "aws_apigatewayv2_route" "rag_api_route" {
   api_id    = aws_apigatewayv2_api.rag_api.id
   route_key = "POST /ask"
+  target    = "integrations/${aws_apigatewayv2_integration.rag_api_integration.id}"
+}
+
+# Polling route: dashboard calls GET /status/{job_id} to check job completion
+resource "aws_apigatewayv2_route" "rag_status_route" {
+  api_id    = aws_apigatewayv2_api.rag_api.id
+  route_key = "GET /status/{job_id}"
   target    = "integrations/${aws_apigatewayv2_integration.rag_api_integration.id}"
 }
 
