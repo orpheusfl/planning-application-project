@@ -35,13 +35,13 @@ def generate_application_answer(client: openai.OpenAI, application_text: str, us
                     "Use the provided application text to answer the user's question."
                     "Do not attempt to answer questions outside this scope"},
                    {"role": "user", "content": f'Question: {user_question}, application url: {planning_url}, text from the application pdf: {application_text}'}]
-    print(f'history - {history}')
+
+    logging.info(f"Querying llm now with history: {history}")
+
     response = client.chat.completions.create(
         model="gpt-5-nano",
         messages=history
     )
-
-    
 
     return response.choices[0].message.content, history
 
@@ -66,8 +66,6 @@ def generate_appeal_answer(client: openai.OpenAI, application_text: str, user_qu
         messages=history
     )
 
-    
-
     return response.choices[0].message.content, history
 
 
@@ -86,5 +84,5 @@ def generate_general_answer(client: openai.OpenAI, user_question: str, history=N
         model="gpt-5-nano",
         messages=history
     )
-   
+
     return response.choices[0].message.content, history

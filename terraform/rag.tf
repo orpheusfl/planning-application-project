@@ -56,7 +56,7 @@ resource "aws_lambda_function" "rag_lambda" {
   package_type  = "Image"
   image_uri     = "${aws_ecr_repository.rag_lambda_repo.repository_url}:latest"
   
-  timeout       = 60 
+  timeout       = 300 
   memory_size   = 1024 
 
   environment {

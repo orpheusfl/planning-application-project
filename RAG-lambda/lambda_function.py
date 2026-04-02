@@ -27,6 +27,7 @@ load_dotenv()
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
+
 def _get_credentials() -> dict:
     """Return DB credentials, preferring Secrets Manager over .env.
 
@@ -63,7 +64,7 @@ def _get_credentials() -> dict:
 def get_connection():
     """Return a new connection to the Postgres database."""
     creds = _get_credentials()
-    #ssl_cert = os.getenv("DB_SSL_CERT", "./global-bundle.pem")
+    # ssl_cert = os.getenv("DB_SSL_CERT", "./global-bundle.pem")
     logging.info(
         "Using DB credentials for user='%s', dbname='%s', host='%s', port='%s'.",
         creds.get("user"),
@@ -101,9 +102,10 @@ def get_connection():
         logger.error(f"Database connection failed: {e}")
         raise
 
+
 def lambda_handler(event, context):
     """Handle chatbot requests from the dashboard.
-    
+
     Expected request body:
     {
         "question_type": "application" | "appeal" | "general",
@@ -132,22 +134,28 @@ def lambda_handler(event, context):
 
         if question_type in ['application', 'appeal'] and not application_id:
             return {
-                    "statusCode": 400,
-                    "body": json.dumps(
-                        {"error": "application_id is required for this question"}
-                    ),
-                }
+                "statusCode": 400,
+                "body": json.dumps(
+                    {"error": "application_id is required for this question"}
+                ),
+            }
 
         if question_type == "application":
+            logger.info(
+                f"Processing application question for application_id={application_id}")
+
             response_text, history = answer_application_question(
                 conn, application_id, user_question, history=history
             )
+            logger.info(
+                f"Completed processing application question for application_id={application_id}")
         elif question_type == "appeal":
             response_text, history = answer_appeal_question(
                 conn, application_id, user_question, history=history
             )
         else:  # general
-            response_text, history = answer_general_question(user_question, history=history)
+            response_text, history = answer_general_question(
+                user_question, history=history)
 
         return {
             "statusCode": 200,
@@ -159,7 +167,8 @@ def lambda_handler(event, context):
         }
 
     except Exception as e:
-        logger.error(f"Error processing chatbot request: {str(e)}", exc_info=True)
+        logger.error(
+            f"Error processing chatbot request: {str(e)}", exc_info=True)
         return {
             "statusCode": 500,
             "body": json.dumps({"error": f"Internal server error: {str(e)}"}),

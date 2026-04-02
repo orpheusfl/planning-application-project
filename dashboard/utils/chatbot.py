@@ -132,8 +132,9 @@ class ChatbotInterface:
             response = requests.post(
                 self.lambda_endpoint,
                 json=payload,
-                timeout=120,
+                timeout=300,
             )
+
             response.raise_for_status()
 
             data = response.json()
@@ -142,7 +143,7 @@ class ChatbotInterface:
                 return data.get("response", "No response from server")
             else:
                 error_msg = data.get("error", "Unknown error")
-                return f"Error: {error_msg}"
+                return f"Error Calling Lambda: {error_msg}"
 
         except requests.exceptions.Timeout as e:
             logger.error(f"Lambda request timed out: {str(e)}")
