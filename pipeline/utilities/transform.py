@@ -923,6 +923,19 @@ Return format:
         finally:
             self._cleanup_temp_files()
 
+    def _is_relevant_document_type(self, document_type: str, relevant_types: set[str]) -> bool:
+        """Check if document type contains any relevant type string.
+
+        Args:
+            document_type: The document type to check
+            relevant_types: Set of relevant type keywords to match against
+
+        Returns:
+            True if any relevant type is contained in the document type (case-insensitive)
+        """
+        doc_type_lower = document_type.lower()
+        return any(relevant_type in doc_type_lower for relevant_type in relevant_types)
+
     def _filter_pdfs_for_relevance(self):
         """Filter PDFs to include only those most relevant for resident-focused summary.
         Prints out the number of PDFs before and after filtering, and logs the percentage kept.
@@ -933,15 +946,15 @@ Return format:
                           'planning statement',
                           'consultation summary',
                           'environmental report',
-                          '	Application Form - Without Personal Data',
-                          'Correspondence',
-                          'Planning statement',
-                          'Site notice'}
+                          'correspondence',
+                          'site notice'}
 
         initial_count = len(self._raw_pdfs)
 
         filtered_pdfs = [
-            pdf for pdf in self._raw_pdfs if pdf['document_type'].lower() in relevant_types]
+            pdf for pdf in self._raw_pdfs
+            if self._is_relevant_document_type(pdf['document_type'], relevant_types)
+        ]
         final_count = len(filtered_pdfs)
 
         if initial_count > 0:
@@ -955,12 +968,12 @@ Return format:
         removed_types = {
             pdf['document_type']
             for pdf in self._raw_pdfs
-            if pdf['document_type'].lower() not in relevant_types
+            if not self._is_relevant_document_type(pdf['document_type'], relevant_types)
         }
         kept_types = {
             pdf['document_type']
             for pdf in self._raw_pdfs
-            if pdf['document_type'].lower() in relevant_types
+            if self._is_relevant_document_type(pdf['document_type'], relevant_types)
         }
 
         if removed_types:

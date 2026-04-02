@@ -757,14 +757,14 @@ def _run_scraper_pipeline(
     scraper_to_run,
     label: str,
     scraper_kwargs: dict = None,
+    enrich: bool = True,
 ) -> List[Dict[str, Any]]:
-    """
-    Shared pipeline: create session → fetch stubs → filter new (pre-enrichment)
-    → enrich new → filter changed (post-enrichment) → return applications that
-    need inserting or updating.
+    """Shared pipeline: create session → fetch stubs → filter new (pre-enrichment)
+    → optionally enrich new → optionally filter changed (post-enrichment) → return applications.
 
     Args:
         scraper_kwargs: Optional dict of keyword arguments to pass to scraper_to_run()
+        enrich: If False, returns unenriched stubs with database_action annotation for later processing
     """
     if scraper_kwargs is None:
         scraper_kwargs = {}
@@ -779,6 +779,23 @@ def _run_scraper_pipeline(
     logger.info("Scraper returned %d applications for %s",
                 len(initial_application_info), label)
 
+    if not enrich:
+        logger.info(
+            "Enrich=False: Returning unenriched stubs for later batch processing")
+        # Annotate with database_action but don't enrich
+        new_info = filter_new_applications(initial_application_info, existing)
+        existing_info = [
+            s for s in initial_application_info if s["application_id"] in existing]
+
+        for app in existing_info:
+            app['database_action'] = 'check_for_changes'
+
+        result = new_info + existing_info
+        logger.info("Completed scrape for %s: %d new (unenriched), %d existing (unenriched), %d total",
+                    label, len(new_info), len(existing_info), len(result))
+        return result
+
+    # Original enrichment flow (for backward compatibility)
     # Filter new applications before enrichment to avoid unnecessary work
     new_info = filter_new_applications(initial_application_info, existing)
 
@@ -814,12 +831,13 @@ def _run_scraper_pipeline(
     return result
 
 
-def run_scraper_weekly_applications(conn: Any, app_limit: Optional[int] = None) -> List[Dict[str, Any]]:
+def run_scraper_weekly_applications(conn: Any, app_limit: Optional[int] = None, enrich: bool = True) -> List[Dict[str, Any]]:
     """Runs the scraper pipeline for weekly decided applications.
 
     Args:
         app_limit: Optional limit on applications per date type (validated/decided).
                    Useful for testing.
+        enrich: If False, returns unenriched stubs for batch processing by caller.
     """
 
     logger.info("Starting scrape: weekly decided applications")
@@ -833,6 +851,7 @@ def run_scraper_weekly_applications(conn: Any, app_limit: Optional[int] = None) 
         scraper_to_run=get_weekly_decided_applications,
         label="weekly applications",
         scraper_kwargs=scraper_kwargs,
+        enrich=enrich,
     )
 
 
