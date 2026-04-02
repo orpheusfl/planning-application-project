@@ -165,7 +165,7 @@ def insert_decision_type(conn, decision_type_name: str,
                 f"INSERT INTO {decision_type_table_name} (decision_type) "
                 f"VALUES (%s) RETURNING decision_type_id",
                 (decision_type_name,))
-        new_id = cursor.fetchone()[0]
+            new_id = cursor.fetchone()[0]
         conn.commit()
         logging.info("Added new decision type '%s' with id %s.",
                      decision_type_name, new_id)

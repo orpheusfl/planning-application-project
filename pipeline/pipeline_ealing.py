@@ -19,10 +19,6 @@ logger = logging.getLogger(__name__)
 COUNCIL_NAME = "Ealing"
 MAX_APPLICATIONS_PER_RUN = 100
 
-# TEMPORARY LIMIT FOR TESTING: Set to 10 to scrape 10 validated and 10 decided applications
-# Remove this or set to None to disable the limit
-TEST_WEEKLY_APP_LIMIT = 10
-
 
 def build_db_connection(db_host: str, db_port: str, db_name: str,
                         db_user: str, db_password: str):
@@ -38,9 +34,7 @@ def build_db_connection(db_host: str, db_port: str, db_name: str,
 
 def extract_all_applications(conn) -> list[dict]:
     """Run the weekly applications scraper and return raw application stubs."""
-    # NOTE: Using TEST_WEEKLY_APP_LIMIT for temporary testing. Set to None to disable.
-    weekly_decided = run_scraper_weekly_applications(
-        conn, app_limit=TEST_WEEKLY_APP_LIMIT)
+    weekly_decided = run_scraper_weekly_applications(conn)
     logger.info("Extracted %d weekly decided applications.",
                 len(weekly_decided))
 
