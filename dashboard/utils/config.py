@@ -177,5 +177,65 @@ CSS = """
         font-size: 11px; color: #6B7280;
         text-transform: uppercase; letter-spacing: 0.5px;
     }
+
+    /* Floating chat button */
+    .st-key-chat_fab {
+        position: fixed;
+        bottom: 2rem;
+        right: 2rem;
+        z-index: 999;
+    }
+    .st-key-chat_fab button {
+        border-radius: 50% !important;
+        width: 56px !important;
+        height: 56px !important;
+        padding: 0 !important;
+        font-size: 24px !important;
+        background-color: #165A9E !important;
+        color: white !important;
+        border: none !important;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.25) !important;
+        cursor: pointer;
+    }
+    .st-key-chat_fab button:hover {
+        background-color: #0e4a82 !important;
+        box-shadow: 0 6px 16px rgba(0,0,0,0.35) !important;
+    }
+
+    /* Floating chat overlay panel */
+    .st-key-chat_overlay {
+        position: fixed;
+        bottom: 6rem;
+        right: 2rem;
+        z-index: 998;
+        width: 420px;
+        max-height: 70vh;
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 8px 30px rgba(0,0,0,0.2);
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+    }
+    .st-key-chat_overlay > div {
+        padding: 0.5rem 0.75rem;
+    }
+    .st-key-chat_overlay .stSelectbox,
+    .st-key-chat_overlay .stTextInput {
+        margin-bottom: 0.25rem;
+    }
+    .st-key-chat_overlay [data-testid="stVerticalBlock"] {
+        gap: 0.4rem;
+    }
+    .st-key-chat_overlay [data-testid="stChatMessage"] p {
+        font-size: 13px !important;
+    }
+    .st-key-chat_overlay .stFormSubmitButton button,
+    .st-key-chat_overlay .st-key-chat_clear button {
+        font-size: 12px !important;
+        padding: 0.2rem 0.5rem !important;
+        min-height: 0 !important;
+        height: auto !important;
+    }
 </style>
 """

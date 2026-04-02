@@ -371,7 +371,7 @@ def render_sidebar(
     # Date range
     min_timestamp = df["date"].min()
     max_timestamp = df["date"].max()
-    
+
     # Handle NaT (Not a Time) values
     if pd.isna(min_timestamp) or pd.isna(max_timestamp):
         # Use default date range if no valid dates
@@ -386,7 +386,7 @@ def render_sidebar(
             default_start = (datetime.now() - timedelta(days=30)).date()
         else:
             default_start = min_date
-    
+
     date_range = st.sidebar.date_input(
         "Filter by validation date",
         value=(default_start, max_date),
