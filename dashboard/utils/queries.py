@@ -79,19 +79,24 @@ def load_applications() -> pd.DataFrame:
 
 @st.cache_data(ttl=3600)
 def load_council_boundaries(council_names: list[str]) -> dict[str, dict]:
-    """Load GeoJSON boundary files for the given council names.
+    """Load GeoJSON boundary files for all available councils.
 
-    Looks for ``boundaries/<council_name>.geojson`` on disk.
-    Councils without a matching file are silently skipped.
+    Loads boundaries for councils that appear in the data *and* any
+    additional boundary files found on disk (e.g. councils expected
+    to provide data soon).
 
     Args:
-        council_names: List of council names to load boundaries for
+        council_names: List of council names present in the data
 
     Returns:
         Mapping of council name to parsed GeoJSON dict
     """
+    all_names = set(council_names)
+    for path in BOUNDARIES_DIR.glob("*.geojson"):
+        all_names.add(path.stem)
+
     boundaries: dict[str, dict] = {}
-    for name in council_names:
+    for name in sorted(all_names):
         path = BOUNDARIES_DIR / f"{name}.geojson"
         if not path.exists():
             continue
