@@ -1,4 +1,5 @@
 # OpenPlan — Planning Intelligence Platform
+![OpenPlan logo](OpenPlan_Logo.png)
 
 > Automated monitoring and AI-powered analysis of UK planning applications, delivered through an interactive map-based dashboard.
 

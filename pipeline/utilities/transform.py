@@ -247,11 +247,15 @@ class Application:
 
 1. "summary": A 2-3 sentence summary highlighting key details residents need to
 know (housing units, effects on neighboring property value, public amenities, traffic impact, transport links, affordable
-housing percentage, environmental concerns). CRITICAL: Include inline references
-directly within the summary text showing exactly which PDF section each fact came from.
-Use the format: "...specific detail (<document_type>, page X)..." embedded
+housing percentage, environmental concerns). CRITICAL:
+
+- Include inline references directly within the summary text showing exactly which
+PDF section each fact came from. Use the format: "...specific detail (<document_type>, page X)..." embedded
 throughout the summary. For example: "The scheme includes 500 units of housing
-(source: Application Form, page 2) with 25% affordable housing (source: Design Report, page 5)..."
+(source: Application Form, page 2) with 25% affordable housing (source: Design Report, page 5)...". If the document_type is
+all caps, please change it to title case in the reference.
+- Make the summary easily readable for local residents, avoid referencing specific codes or using technical jargon.
+Focus on what residents care about and how it affects them. The summary should be understandable to someone without any background in planning.
 
 2. "postcode": The complete and correct UK postcode for this application.
 {postcode_instructions}
@@ -928,7 +932,11 @@ Return format:
                           'design and access statement',
                           'planning statement',
                           'consultation summary',
-                          'environmental report'}
+                          'environmental report',
+                          '	Application Form - Without Personal Data',
+                          'Correspondence',
+                          'Planning statement',
+                          'Site notice'}
 
         initial_count = len(self._raw_pdfs)
 
