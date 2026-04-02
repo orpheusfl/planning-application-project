@@ -45,7 +45,7 @@ resource "aws_ecs_task_definition" "c22-planning-dashboard" {
         },
         {
           name  = "RAG_LAMBDA_ENDPOINT"
-          value = "${aws_apigatewayv2_api.rag_api.api_endpoint}/ask"
+          value = aws_apigatewayv2_api.rag_api.api_endpoint
         }
       ]
 

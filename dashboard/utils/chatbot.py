@@ -63,15 +63,9 @@ class ChatbotInterface:
             lambda_endpoint: The URL of the Lambda function endpoint.
                            If None, uses mock responses for local development.
         """
-        self.lambda_endpoint = lambda_endpoint + 'ask'
+        self.lambda_endpoint = lambda_endpoint + "/ask" if lambda_endpoint else None
 
-        # Derive the status polling base URL from the /ask endpoint.
-        # e.g. https://xxx.amazonaws.com/ask  →  https://xxx.amazonaws.com/status
-        self._status_base = (
-            lambda_endpoint.rsplit("/ask", 1)[0] + "/status"
-            if lambda_endpoint
-            else None
-        )
+        self._status_base = lambda_endpoint + "/status" if lambda_endpoint else None
 
         self._initialize_session_state()
 

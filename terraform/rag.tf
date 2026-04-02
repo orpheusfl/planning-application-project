@@ -179,7 +179,7 @@ resource "aws_lambda_permission" "apigw_invoke_lambda" {
 
 output "rag_api_endpoint" {
   description = "The endpoint URL to send questions to your RAG Lambda"
-  value       = "${aws_apigatewayv2_api.rag_api.api_endpoint}/ask"
+  value       = aws_apigatewayv2_api.rag_api.api_endpoint
 }
 
 output "ecr_repository_url" {
