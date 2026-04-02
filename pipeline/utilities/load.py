@@ -66,23 +66,35 @@ def get_council_id(conn, council_name: str, council_table_name: str) -> int:
 
 def get_status_type_id(conn, status_name: str,
                        status_type_table_name: str) -> int:
-    """ Retrieves status_type_id from status_types table. """
+    """ Retrieves status_type_id from status_types table. 
+        If the status_type is not found, adds it to the database and returns the
+    new id.
+    """
     try:
         with conn.cursor() as cursor:
+            # First try to get the status type id
             cursor.execute(
                 f"SELECT status_type_id FROM {status_type_table_name} "
                 f"WHERE status_type ILIKE %s", (status_name,))
             result = cursor.fetchone()
             if result:
                 return result[0]
-            logging.error("Status type '%s' not found in database.",
-                          status_name)
-            raise ValueError(
-                f"Status type '{status_name}' not found in database.")
-    except ValueError:
-        raise
+
+            # If not found, insert it and return the new id
+            logging.warning("Status type '%s' not found. Adding to database.",
+                            status_name)
+            cursor.execute(
+                f"INSERT INTO {status_type_table_name} (status_type) "
+                f"VALUES (%s) RETURNING status_type_id",
+                (status_name,))
+            new_id = cursor.fetchone()[0]
+            conn.commit()
+            logging.info("Added new status type '%s' with id %s.",
+                         status_name, new_id)
+            return new_id
     except Exception as e:
-        logging.error("Error retrieving status_type_id: %s", e)
+        logging.error("Error retrieving/inserting status_type_id: %s", e)
+        conn.rollback()
         raise
 
 
@@ -136,16 +148,21 @@ def get_application_type_id(conn, application_type_name: str,
 def insert_decision_type(conn, decision_type_name: str,
                          decision_type_table_name: str) -> int:
     """Inserts a new decision type into the database and returns the new id."""
-    with conn.cursor() as cursor:
-        cursor.execute(
-            f"INSERT INTO {decision_type_table_name} (decision_type) "
-            f"VALUES (%s) RETURNING decision_type_id",
-            (decision_type_name,))
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                f"INSERT INTO {decision_type_table_name} (decision_type) "
+                f"VALUES (%s) RETURNING decision_type_id",
+                (decision_type_name,))
         new_id = cursor.fetchone()[0]
         conn.commit()
         logging.info("Added new decision type '%s' with id %s.",
                      decision_type_name, new_id)
         return new_id
+    except Exception as e:
+        logging.error("Error inserting decision_type_id: %s", e)
+        conn.rollback()
+        raise
 
 
 def get_decision_type_id(conn, decision_type_name: str,
@@ -158,17 +175,22 @@ def get_decision_type_id(conn, decision_type_name: str,
     if not decision_type_name:
         return None
 
-    with conn.cursor() as cursor:
-        cursor.execute(
-            f"SELECT decision_type_id FROM {decision_type_table_name} "
-            f"WHERE decision_type ILIKE %s", (decision_type_name,))
-        result = cursor.fetchone()
-        if result:
-            return result[0]
+    try:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                f"SELECT decision_type_id FROM {decision_type_table_name} "
+                f"WHERE decision_type ILIKE %s", (decision_type_name,))
+            result = cursor.fetchone()
+            if result:
+                return result[0]
 
-    logging.warning("Decision type '%s' not found. Adding to database.",
-                    decision_type_name)
-    return insert_decision_type(conn, decision_type_name, decision_type_table_name)
+        logging.warning("Decision type '%s' not found. Adding to database.",
+                        decision_type_name)
+        return insert_decision_type(conn, decision_type_name, decision_type_table_name)
+    except Exception as e:
+        logging.error("Error retrieving/inserting decision_type_id: %s", e)
+        conn.rollback()
+        raise
 
 
 def load_application_to_rds(conn, table_name: str, application_data: dict,
